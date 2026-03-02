@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Abnehm-Challenge Tracker</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  :root {
+    --bg:#0f172a;--bg2:#1e293b;--card:rgba(30,41,59,0.85);
+    --accent:#6366f1;--accent2:#8b5cf6;--pink:#ec4899;
+    --green:#10b981;--red:#ef4444;--yellow:#f59e0b;
+    --text:#e2e8f0;--muted:#94a3b8;--dim:#64748b;
+    --border:rgba(99,102,241,0.15);--input-border:rgba(99,102,241,0.3);
+    --input-bg:rgba(15,23,42,0.8);--dark-overlay:rgba(15,23,42,0.5);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:linear-gradient(135deg,var(--bg),var(--bg2));color:var(--text);min-height:100vh}
+  .container{max-width:900px;margin:0 auto;padding:20px 16px}
+  .hidden{display:none!important}
+
+  /* AUTH SCREENS */
+  .auth-screen{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
+  .auth-box{background:var(--card);border-radius:20px;padding:48px 40px;border:1px solid var(--border);max-width:420px;width:100%;backdrop-filter:blur(10px);text-align:center}
+  .auth-box h1{font-size:28px;font-weight:800;margin-bottom:8px;background:linear-gradient(135deg,var(--accent),var(--pink));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+  .auth-box .subtitle{color:var(--muted);margin-bottom:28px;font-size:14px}
+  .auth-error{color:var(--red);font-size:13px;margin-top:10px;min-height:20px}
+  .auth-switch{color:var(--accent);cursor:pointer;font-size:13px;margin-top:16px;text-decoration:underline}
+  .auth-switch:hover{color:var(--accent2)}
+  .divider{border:none;border-top:1px solid var(--border);margin:20px 0}
+
+  /* SETUP SCREEN */
+  .setup-box{background:var(--card);border-radius:20px;padding:40px;border:1px solid var(--border);max-width:520px;width:100%;backdrop-filter:blur(10px);text-align:center}
+  .setup-box h1{font-size:28px;font-weight:800;margin-bottom:8px;background:linear-gradient(135deg,var(--accent),var(--pink));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+  .setup-box pre{background:var(--input-bg);border:1px solid var(--input-border);border-radius:10px;padding:16px;text-align:left;font-size:12px;color:var(--muted);overflow-x:auto;margin-bottom:20px;white-space:pre-wrap}
+  .setup-box pre code{color:var(--green)}
+
+  /* SHARED */
+  .card{background:var(--card);border-radius:16px;padding:24px;backdrop-filter:blur(10px);border:1px solid var(--border);margin-bottom:20px}
+  .card h3{font-size:16px;margin-bottom:16px}
+  input,select{background:var(--input-bg);border:1px solid var(--input-border);border-radius:10px;padding:10px 14px;color:var(--text);font-size:14px;outline:none;width:100%}
+  select{cursor:pointer}
+  label{font-size:12px;color:var(--muted);display:block;margin-bottom:4px}
+  .btn{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;border:none;border-radius:10px;padding:10px 20px;cursor:pointer;font-weight:600;font-size:14px;transition:opacity .2s}
+  .btn:hover{opacity:.9}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .btn-danger{background:linear-gradient(135deg,var(--red),var(--pink));padding:6px 12px;font-size:12px}
+  .btn-secondary{background:#475569}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+  .field{flex:1 1 160px}.field-sm{flex:0 0 130px}.field-date{flex:0 0 150px}
+
+  .header{text-align:center;margin-bottom:24px}
+  .header h1{font-size:26px;font-weight:800;background:linear-gradient(135deg,var(--accent),var(--pink));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+  .header .meta{color:var(--muted);margin-top:6px;font-size:14px}
+  .header .meta strong{color:var(--yellow)}
+  .user-bar{display:flex;justify-content:flex-end;align-items:center;gap:10px;margin-bottom:8px;font-size:13px;color:var(--dim)}
+  .user-bar .email{color:var(--muted)}
+
+  .tabs{display:flex;border-bottom:1px solid var(--border);margin-bottom:20px;overflow-x:auto}
+  .tab{padding:10px 20px;border:none;border-bottom:3px solid transparent;background:transparent;color:var(--muted);cursor:pointer;font-weight:400;font-size:14px;transition:all .2s;white-space:nowrap}
+  .tab.active{color:var(--text);font-weight:700;border-bottom-color:var(--accent)}
+
+  .progress-row{margin-bottom:16px}
+  .progress-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+  .progress-header .name{font-weight:600}.progress-header .stats{color:var(--muted);font-size:13px}
+  .progress-track{height:24px;background:var(--dark-overlay);border-radius:12px;overflow:hidden;position:relative}
+  .progress-fill{height:100%;border-radius:12px;transition:width .5s ease;display:flex;align-items:center;justify-content:flex-end;padding-right:10px;font-size:12px;font-weight:700}
+  .progress-label-outside{position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:12px;font-weight:600}
+  .goal-reached{font-size:12px;color:var(--green);margin-top:4px}
+
+  .rank-item{display:flex;align-items:center;gap:16px;padding:16px;border-radius:12px;margin-bottom:10px;border:1px solid transparent}
+  .rank-item.top{background:rgba(99,102,241,0.12);border-color:rgba(99,102,241,0.3)}
+  .rank-item:not(.top){background:var(--dark-overlay)}
+  .rank-medal{font-size:28px;min-width:40px;text-align:center}
+  .rank-info{flex:1}.rank-name{font-weight:700;font-size:16px}
+  .rank-detail{color:var(--muted);font-size:13px;margin-top:2px}
+  .rank-pct{text-align:right}.rank-pct .pct{font-size:22px;font-weight:800}
+  .rank-pct .goal{font-size:11px;color:var(--dim)}
+
+  .entry-row{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--dark-overlay);border-radius:8px;margin-bottom:6px;font-size:13px}
+  .entry-row .del-btn{background:none;border:none;color:var(--red);cursor:pointer;font-size:16px}
+  .member-row{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:var(--dark-overlay);border-radius:10px;margin-bottom:8px}
+  .chart-container{position:relative;height:300px;margin-top:8px}
+  .empty{text-align:center;padding:60px 20px}.empty .icon{font-size:48px;margin-bottom:16px}
+  .loading{display:flex;align-items:center;justify-content:center;min-height:100vh}
+
+  .password-hint{font-size:11px;color:var(--dim);margin-top:4px;text-align:left}
+  .spinner{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle;margin-left:6px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+
+<!-- SETUP SCREEN -->
+<div id="setupScreen" class="auth-screen hidden">
+  <div class="setup-box">
+    <div style="font-size:48px;margin-bottom:16px">⚙️</div>
+    <h1>Firebase Setup nötig</h1>
+    <p style="color:var(--muted);margin-bottom:20px;font-size:14px">Öffne die <code>index.html</code> und trage deine Firebase-Konfiguration ein:</p>
+    <pre><code>const FIREBASE_CONFIG = {
+  apiKey: "DEIN-API-KEY",
+  authDomain: "DEIN-PROJEKT.firebaseapp.com",
+  databaseURL: "https://DEIN-PROJEKT...firebasedatabase.app",
+  projectId: "DEIN-PROJEKT",
+  storageBucket: "DEIN-PROJEKT.appspot.com",
+  messagingSenderId: "123456789",
+  appId: "1:123:web:abc123"
+};</code></pre>
+    <p style="color:var(--dim);font-size:12px">Siehe die Anleitung von Claude für alle Schritte.</p>
+  </div>
+</div>
+
+<!-- LOGIN SCREEN -->
+<div id="loginScreen" class="auth-screen hidden">
+  <div class="auth-box">
+    <div style="font-size:48px;margin-bottom:16px">🔐</div>
+    <h1>Abnehm-Challenge</h1>
+    <p class="subtitle" id="authSubtitle">Melde dich an, um loszulegen.</p>
+    <div id="loginForm">
+      <input type="email" id="authEmail" placeholder="E-Mail-Adresse" style="margin-bottom:10px">
+      <input type="password" id="authPassword" placeholder="Passwort" style="margin-bottom:4px">
+      <div class="password-hint" id="passwordHint" style="display:none">Mind. 6 Zeichen</div>
+      <button class="btn" id="authBtn" onclick="handleAuth()" style="width:100%;margin-top:12px">Einloggen</button>
+      <div class="auth-error" id="authError"></div>
+      <hr class="divider">
+      <div class="auth-switch" id="authSwitch" onclick="toggleAuthMode()">Noch kein Konto? Registrieren</div>
+    </div>
+  </div>
+</div>
+
+<!-- RESET PASSWORD SCREEN -->
+<div id="resetScreen" class="auth-screen hidden">
+  <div class="auth-box">
+    <div style="font-size:48px;margin-bottom:16px">📧</div>
+    <h1>Passwort zurücksetzen</h1>
+    <p class="subtitle">Wir senden dir einen Link zum Zurücksetzen.</p>
+    <input type="email" id="resetEmail" placeholder="E-Mail-Adresse" style="margin-bottom:10px">
+    <button class="btn" onclick="handleReset()" style="width:100%;margin-top:6px">Link senden</button>
+    <div class="auth-error" id="resetMsg"></div>
+    <hr class="divider">
+    <div class="auth-switch" onclick="showLogin()">← Zurück zum Login</div>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="appScreen" class="container hidden">
+  <div class="user-bar">
+    <span class="email" id="userEmail"></span>
+    <button class="btn btn-secondary" style="padding:5px 12px;font-size:12px" onclick="handleLogout()">Ausloggen</button>
+  </div>
+  <div class="header">
+    <h1 id="headerTitle">🔥 Abnehm-Challenge 2026</h1>
+    <p class="meta" id="headerMeta"></p>
+  </div>
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('dashboard',this)">📊 Dashboard</button>
+    <button class="tab" onclick="switchTab('checkin',this)">📝 Check-in</button>
+    <button class="tab" onclick="switchTab('ranking',this)">🏆 Ranking</button>
+    <button class="tab" onclick="switchTab('members',this)">👥 Teilnehmer</button>
+    <button class="tab" onclick="switchTab('settings',this)">⚙️ Settings</button>
+  </div>
+  <div id="tab-dashboard"></div>
+  <div id="tab-checkin" class="hidden"></div>
+  <div id="tab-ranking" class="hidden"></div>
+  <div id="tab-members" class="hidden"></div>
+  <div id="tab-settings" class="hidden"></div>
+</div>
+
+<!-- LOADING -->
+<div id="loadingScreen" class="loading">
+  <div style="text-align:center">
+    <div style="font-size:40px;margin-bottom:16px">⏳</div>
+    <div>Wird geladen...</div>
+  </div>
+</div>
+
+<!-- Firebase SDKs -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-app-compat.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-database-compat.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-auth-compat.min.js"></script>
+
+<script>
+// ╔══════════════════════════════════════════════════════════════╗
+// ║  🔧 KONFIGURATION – DIESE WERTE MUSST DU ANPASSEN!         ║
+// ╚══════════════════════════════════════════════════════════════╝
+
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyB1rYgle4dztGxrolyl5-SrFWn0Mf6Mh9g",
+  authDomain: "gewichtsapp-ceb16.firebaseapp.com",
+  databaseURL: "https://gewichtsapp-ceb16-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "gewichtsapp-ceb16",
+  storageBucket: "gewichtsapp-ceb16.firebasestorage.app",
+  messagingSenderId: "647578589564",
+  appId: "1:647578589564:web:ea52c1a720c6fac600ecf9"
+};
+
+// ╔══════════════════════════════════════════════════════════════╗
+// ║  Ab hier nichts mehr ändern                                 ║
+// ╚══════════════════════════════════════════════════════════════╝
+
+const COLORS=["#6366f1","#f43f5e","#10b981","#f59e0b","#3b82f6","#ec4899","#14b8a6","#8b5cf6","#ef4444","#06b6d4","#84cc16","#e879f9","#fb923c","#22d3ee","#a3e635"];
+
+let db=null, auth=null, currentUser=null;
+let appData={challengeName:"Abnehm-Challenge 2026",deadline:"2026-07-31",members:{}};
+let currentTab="dashboard", weightChart=null, isRegisterMode=false;
+
+// ── Init ──
+function init(){
+  if(FIREBASE_CONFIG.apiKey==="DEIN-API-KEY"){
+    show("setupScreen");return;
+  }
+  try{
+    firebase.initializeApp(FIREBASE_CONFIG);
+    db=firebase.database();
+    auth=firebase.auth();
+  }catch(e){show("setupScreen");return;}
+
+  auth.onAuthStateChanged(user=>{
+    if(user){
+      currentUser=user;
+      startApp();
+    }else{
+      currentUser=null;
+      show("loginScreen");
+    }
+  });
+
+  // Enter-Key für Login
+  document.getElementById("authPassword").addEventListener("keydown",e=>{if(e.key==="Enter")handleAuth()});
+  document.getElementById("authEmail").addEventListener("keydown",e=>{if(e.key==="Enter")document.getElementById("authPassword").focus()});
+}
+
+function show(id){
+  ["setupScreen","loginScreen","resetScreen","appScreen","loadingScreen"].forEach(s=>
+    document.getElementById(s).classList.toggle("hidden",s!==id));
+}
+
+// ── Auth ──
+function toggleAuthMode(){
+  isRegisterMode=!isRegisterMode;
+  document.getElementById("authSubtitle").textContent=isRegisterMode?"Erstelle ein neues Konto.":"Melde dich an, um loszulegen.";
+  document.getElementById("authBtn").textContent=isRegisterMode?"Registrieren":"Einloggen";
+  document.getElementById("authSwitch").textContent=isRegisterMode?"Bereits ein Konto? Einloggen":"Noch kein Konto? Registrieren";
+  document.getElementById("passwordHint").style.display=isRegisterMode?"block":"none";
+  document.getElementById("authError").textContent="";
+}
+
+function showLogin(){
+  isRegisterMode=false;
+  document.getElementById("authSubtitle").textContent="Melde dich an, um loszulegen.";
+  document.getElementById("authBtn").textContent="Einloggen";
+  document.getElementById("authSwitch").textContent="Noch kein Konto? Registrieren";
+  document.getElementById("passwordHint").style.display="none";
+  document.getElementById("authError").textContent="";
+  show("loginScreen");
+}
+
+function translateError(code){
+  const map={
+    "auth/email-already-in-use":"Diese E-Mail ist bereits registriert.",
+    "auth/invalid-email":"Ungültige E-Mail-Adresse.",
+    "auth/weak-password":"Passwort muss mind. 6 Zeichen haben.",
+    "auth/user-not-found":"Kein Konto mit dieser E-Mail gefunden.",
+    "auth/wrong-password":"Falsches Passwort.",
+    "auth/invalid-credential":"E-Mail oder Passwort falsch.",
+    "auth/too-many-requests":"Zu viele Versuche. Bitte warte kurz.",
+    "auth/missing-password":"Bitte Passwort eingeben.",
+    "auth/missing-email":"Bitte E-Mail eingeben."
+  };
+  return map[code]||"Ein Fehler ist aufgetreten. Bitte versuche es erneut.";
+}
+
+async function handleAuth(){
+  const email=document.getElementById("authEmail").value.trim();
+  const pw=document.getElementById("authPassword").value;
+  const errEl=document.getElementById("authError");
+  const btn=document.getElementById("authBtn");
+  errEl.textContent="";
+  btn.disabled=true;
+  btn.innerHTML=(isRegisterMode?"Registrieren":"Einloggen")+'<span class="spinner"></span>';
+  try{
+    if(isRegisterMode){
+      await auth.createUserWithEmailAndPassword(email,pw);
+    }else{
+      await auth.signInWithEmailAndPassword(email,pw);
+    }
+  }catch(e){
+    errEl.textContent=translateError(e.code);
+    btn.disabled=false;
+    btn.textContent=isRegisterMode?"Registrieren":"Einloggen";
+  }
+}
+
+async function handleReset(){
+  const email=document.getElementById("resetEmail").value.trim();
+  const msg=document.getElementById("resetMsg");
+  if(!email){msg.textContent="Bitte E-Mail eingeben.";msg.style.color="var(--red)";return;}
+  try{
+    await auth.sendPasswordResetEmail(email);
+    msg.textContent="Link gesendet! Prüfe dein Postfach.";
+    msg.style.color="var(--green)";
+  }catch(e){
+    msg.textContent=translateError(e.code);
+    msg.style.color="var(--red)";
+  }
+}
+
+function handleLogout(){
+  auth.signOut();
+}
+
+// ── App ──
+function startApp(){
+  show("appScreen");
+  document.getElementById("userEmail").textContent=currentUser.email;
+  db.ref("challenge").on("value",snap=>{
+    if(snap.val()){appData={...appData,...snap.val()};if(!appData.members)appData.members={};}
+    renderAll();
+  });
+}
+
+// ── Helpers ──
+function membersArray(){return Object.entries(appData.members||{}).map(([id,m])=>({id,...m}))}
+function getLost(m){const e=entriesArray(m);return e.length===0?0:m.startWeight-e[e.length-1].weight}
+function getProgress(m){return!m.goalLoss?0:Math.min(100,Math.max(0,(getLost(m)/m.goalLoss)*100))}
+function entriesArray(m){if(!m.entries)return[];return Object.entries(m.entries).map(([k,v])=>({key:k,...v})).sort((a,b)=>a.date.localeCompare(b.date))}
+function getRanking(){return membersArray().sort((a,b)=>getProgress(b)-getProgress(a))}
+function getDaysLeft(){return Math.max(0,Math.ceil((new Date(appData.deadline)-new Date())/864e5))}
+function medal(i){return i===0?"🥇":i===1?"🥈":i===2?"🥉":`#${i+1}`}
+function fmtDate(d){return new Date(d).toLocaleDateString("de-DE")}
+
+// ── Tabs ──
+function switchTab(name,btn){
+  currentTab=name;
+  document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
+  if(btn)btn.classList.add("active");
+  ["dashboard","checkin","ranking","members","settings"].forEach(t=>
+    document.getElementById("tab-"+t).classList.toggle("hidden",t!==name));
+  renderAll();
+}
+
+function renderAll(){
+  document.getElementById("headerTitle").textContent="🔥 "+appData.challengeName;
+  document.getElementById("headerMeta").innerHTML=`⏰ Noch <strong>${getDaysLeft()}</strong> Tage bis ${fmtDate(appData.deadline)} · ${membersArray().length} Teilnehmer`;
+  if(currentTab==="dashboard")renderDashboard();
+  else if(currentTab==="checkin")renderCheckin();
+  else if(currentTab==="ranking")renderRanking();
+  else if(currentTab==="members")renderMembers();
+  else if(currentTab==="settings")renderSettings();
+}
+
+// ── DASHBOARD ──
+function renderDashboard(){
+  const el=document.getElementById("tab-dashboard");
+  const members=membersArray();
+  if(members.length===0){
+    el.innerHTML=`<div class="card empty"><div class="icon">🚀</div><h2>Starte deine Challenge!</h2><p style="color:var(--muted)">Füge Teilnehmer unter "Teilnehmer" hinzu.</p><button class="btn" style="margin-top:16px" onclick="switchTab('members',document.querySelectorAll('.tab')[3])">Teilnehmer hinzufügen →</button></div>`;
+    return;
+  }
+  const ranked=getRanking();
+  let html=ranked.map((m,i)=>{
+    const prog=getProgress(m),lost=getLost(m);
+    const color=prog>=100?"linear-gradient(90deg,#10b981,#34d399)":`linear-gradient(90deg,${COLORS[i%COLORS.length]},${COLORS[(i+1)%COLORS.length]})`;
+    return`<div class="progress-row"><div class="progress-header"><span class="name">${medal(i)} ${m.name}</span><span class="stats">${lost>=0?"-":"+"}${Math.abs(lost).toFixed(1)} / ${m.goalLoss} kg</span></div><div class="progress-track"><div class="progress-fill" style="width:${prog}%;background:${color}">${prog>15?`<span>${prog.toFixed(0)}%</span>`:""}</div>${prog<=15?`<span class="progress-label-outside">${prog.toFixed(0)}%</span>`:""}</div>${prog>=100?'<div class="goal-reached">🎉 Ziel erreicht!</div>':""}</div>`;
+  }).join("");
+
+  let chart=members.some(m=>entriesArray(m).length>1)?`<div class="card"><h3>📈 Gewichtsverlust über Zeit (kg)</h3><div class="chart-container"><canvas id="weightChartCanvas"></canvas></div></div>`:"";
+  el.innerHTML=`<div class="card"><h3>Fortschritt zum Ziel</h3>${html}</div>${chart}`;
+  if(chart)renderChart();
+}
+
+function renderChart(){
+  const canvas=document.getElementById("weightChartCanvas");
+  if(!canvas)return;
+  if(weightChart){weightChart.destroy();weightChart=null}
+  const members=membersArray(),allDates=new Set();
+  members.forEach(m=>entriesArray(m).forEach(e=>allDates.add(e.date)));
+  const sorted=[...allDates].sort();
+  const datasets=members.map((m,i)=>{
+    const entries=entriesArray(m);
+    const data=sorted.map(d=>{const e=entries.find(x=>x.date===d);return e?+(m.startWeight-e.weight).toFixed(1):null});
+    return{label:m.name,data,borderColor:COLORS[i%COLORS.length],backgroundColor:COLORS[i%COLORS.length]+"33",borderWidth:2.5,pointRadius:4,tension:.3,spanGaps:true};
+  });
+  weightChart=new Chart(canvas,{type:"line",data:{labels:sorted.map(d=>d.slice(5)),datasets},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:"#94a3b8"}}},scales:{x:{ticks:{color:"#64748b"},grid:{color:"rgba(99,102,241,0.1)"}},y:{ticks:{color:"#64748b"},grid:{color:"rgba(99,102,241,0.1)"}}}}});
+}
+
+// ── CHECK-IN ──
+function renderCheckin(){
+  const el=document.getElementById("tab-checkin"),members=membersArray();
+  if(members.length===0){el.innerHTML=`<div class="card"><h3>📝 Check-in</h3><p style="color:var(--muted)">Erst Teilnehmer hinzufügen!</p></div>`;return}
+  const today=new Date().toISOString().slice(0,10);
+  const opts=members.map(m=>`<option value="${m.id}">${m.name}</option>`).join("");
+  el.innerHTML=`<div class="card"><h3>📝 Wöchentlicher Check-in</h3><div class="row"><div class="field"><label>Teilnehmer</label><select id="ci-member"><option value="">Wählen...</option>${opts}</select></div><div class="field-date"><label>Datum</label><input type="date" id="ci-date" value="${today}"></div><div class="field-sm"><label>Gewicht (kg)</label><input type="number" step="0.1" id="ci-weight" placeholder="z.B. 82.5"></div><button class="btn" onclick="addEntry()" style="align-self:flex-end">Eintragen ✓</button></div><div id="ci-entries" style="margin-top:20px"></div></div>`;
+  document.getElementById("ci-member").addEventListener("change",renderEntries);
+}
+
+function renderEntries(){
+  const el=document.getElementById("ci-entries"),mid=document.getElementById("ci-member").value;
+  if(!mid||!appData.members[mid]){el.innerHTML="";return}
+  const m={id:mid,...appData.members[mid]},entries=entriesArray(m);
+  if(entries.length===0){el.innerHTML=`<h4 style="color:var(--muted);font-size:14px">Einträge von ${m.name}</h4><p style="color:var(--dim);font-size:13px">Noch keine Einträge.</p>`;return}
+  el.innerHTML=`<h4 style="color:var(--muted);font-size:14px;margin-bottom:10px">Einträge von ${m.name}</h4><div style="max-height:250px;overflow-y:auto">${[...entries].reverse().map(e=>`<div class="entry-row"><span>${fmtDate(e.date)} — <strong>${e.weight} kg</strong></span><button class="del-btn" onclick="deleteEntry('${mid}','${e.key}')">×</button></div>`).join("")}</div>`;
+}
+
+function addEntry(){
+  const mid=document.getElementById("ci-member").value,date=document.getElementById("ci-date").value,weight=parseFloat(document.getElementById("ci-weight").value);
+  if(!mid||!date||isNaN(weight))return;
+  const m=appData.members[mid];
+  if(m&&m.entries){const ex=Object.entries(m.entries).find(([k,v])=>v.date===date);if(ex){db.ref(`challenge/members/${mid}/entries/${ex[0]}`).set({date,weight});document.getElementById("ci-weight").value="";return}}
+  db.ref(`challenge/members/${mid}/entries`).push({date,weight});
+  document.getElementById("ci-weight").value="";
+}
+
+function deleteEntry(mid,key){db.ref(`challenge/members/${mid}/entries/${key}`).remove()}
+
+// ── RANKING ──
+function renderRanking(){
+  const el=document.getElementById("tab-ranking"),ranked=getRanking();
+  if(ranked.length===0){el.innerHTML=`<div class="card"><h3>🏆 Leaderboard</h3><p style="color:var(--muted)">Noch keine Teilnehmer.</p></div>`;return}
+  el.innerHTML=`<div class="card"><h3>🏆 Leaderboard</h3>${ranked.map((m,i)=>{
+    const prog=getProgress(m),lost=getLost(m),entries=entriesArray(m),latest=entries.length>0?entries[entries.length-1].weight:m.startWeight,lc=lost>=0?"var(--green)":"var(--red)";
+    return`<div class="rank-item ${i===0?"top":""}"><div class="rank-medal">${medal(i)}</div><div class="rank-info"><div class="rank-name">${m.name}</div><div class="rank-detail">${m.startWeight} → ${latest} kg · <span style="color:${lc}">${lost>=0?"-":"+"}${Math.abs(lost).toFixed(1)} kg</span></div></div><div class="rank-pct"><div class="pct" style="color:${COLORS[i%COLORS.length]}">${prog.toFixed(0)}%</div><div class="goal">Ziel: ${m.goalLoss} kg</div></div></div>`;
+  }).join("")}</div>`;
+}
+
+// ── MEMBERS ──
+function renderMembers(){
+  const el=document.getElementById("tab-members"),members=membersArray();
+  let list=members.length>0?`<div class="card"><h3>Aktuelle Teilnehmer</h3>${members.map((m,i)=>`<div class="member-row"><div><span style="font-weight:600;color:${COLORS[i%COLORS.length]}">${m.name}</span><span style="color:var(--dim);font-size:13px;margin-left:10px">Start: ${m.startWeight} kg · Ziel: -${m.goalLoss} kg</span></div><button class="btn btn-danger" onclick="removeMember('${m.id}')">Entfernen</button></div>`).join("")}</div>`:"";
+  el.innerHTML=`<div class="card"><h3>Teilnehmer hinzufügen</h3><div class="row"><div class="field"><label>Name</label><input id="m-name" placeholder="z.B. Anna"></div><div class="field-sm"><label>Startgewicht (kg)</label><input type="number" step="0.1" id="m-start" placeholder="z.B. 90"></div><div class="field-sm"><label>Ziel-Verlust (kg)</label><input type="number" step="0.1" id="m-goal" placeholder="z.B. 8"></div><button class="btn" onclick="addMember()" style="align-self:flex-end">Hinzufügen +</button></div></div>${list}`;
+}
+
+function addMember(){
+  const name=document.getElementById("m-name").value.trim(),sw=parseFloat(document.getElementById("m-start").value),gl=parseFloat(document.getElementById("m-goal").value);
+  if(!name||isNaN(sw)||isNaN(gl))return;
+  const today=new Date().toISOString().slice(0,10),ref=db.ref("challenge/members").push();
+  ref.set({name,startWeight:sw,goalLoss:gl,entries:{[ref.push().key]:{date:today,weight:sw}}});
+  document.getElementById("m-name").value="";document.getElementById("m-start").value="";document.getElementById("m-goal").value="";
+}
+
+function removeMember(id){if(confirm("Teilnehmer wirklich entfernen?"))db.ref(`challenge/members/${id}`).remove()}
+
+// ── SETTINGS ──
+function renderSettings(){
+  const el=document.getElementById("tab-settings");
+  el.innerHTML=`<div class="card"><h3>⚙️ Challenge-Einstellungen</h3><div class="row" style="margin-bottom:16px"><div class="field"><label>Challenge-Name</label><input id="s-name" value="${appData.challengeName}"></div><div class="field-date"><label>Deadline</label><input type="date" id="s-deadline" value="${appData.deadline}"></div><button class="btn" onclick="saveSettings()" style="align-self:flex-end">Speichern</button></div></div>
+  <div style="text-align:center;margin-top:30px;padding-top:20px;border-top:1px solid var(--border)">
+    <button class="btn btn-danger" onclick="resetAll()" style="padding:10px 24px">🗑️ Alle Daten löschen</button>
+  </div>`;
+}
+
+function saveSettings(){
+  const n=document.getElementById("s-name").value.trim(),d=document.getElementById("s-deadline").value;
+  if(n)db.ref("challenge/challengeName").set(n);
+  if(d)db.ref("challenge/deadline").set(d);
+}
+
+function resetAll(){
+  if(!confirm("WIRKLICH alle Daten löschen?"))return;
+  if(!confirm("Bist du GANZ sicher?"))return;
+  db.ref("challenge").set({challengeName:"Abnehm-Challenge 2026",deadline:"2026-07-31",members:{}});
+}
+
+// ── Start ──
+init();
+</script>
+</body>
+</html>
