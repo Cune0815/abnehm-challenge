@@ -193,8 +193,9 @@ const COLORS=["#6366f1","#f43f5e","#10b981","#f59e0b","#3b82f6","#ec4899","#14b8
 
 let db=null,auth=null,currentUser=null;
 let appData={challengeName:"Abnehm-Challenge 2026",deadline:"2026-07-31",inviteCode:DEFAULT_INVITE_CODE,members:{},admins:{}};
-let currentTab="dashboard",weightChart=null,isRegisterMode=false;
+let currentTab=null,weightChart=null,isRegisterMode=false;
 let editingMember=null,editingEntry=null,pendingMemberEdit=null;
+let dataLoaded={admins:false,members:false};
 
 function isAdmin(){
   if(!currentUser)return false;
@@ -320,29 +321,39 @@ function handleLogout(){auth.signOut()}
 function startApp(){
   show("appScreen");
   document.getElementById("userEmail").textContent=currentUser.email;
+  dataLoaded={admins:false,members:false};
+  currentTab=null;
   
   // Lade Daten einzeln, da Firebase Rules pro Pfad gelten
   db.ref("challenge/challengeName").on("value",snap=>{
     appData.challengeName=snap.val()||"Abnehm-Challenge 2026";
-    renderAll();
+    if(dataLoaded.admins&&dataLoaded.members)renderAll();
   });
   db.ref("challenge/deadline").on("value",snap=>{
     appData.deadline=snap.val()||"2026-07-31";
-    renderAll();
+    if(dataLoaded.admins&&dataLoaded.members)renderAll();
   });
   db.ref("challenge/inviteCode").on("value",snap=>{
     appData.inviteCode=snap.val()||DEFAULT_INVITE_CODE;
   });
   db.ref("challenge/admins").on("value",snap=>{
     appData.admins=snap.val()||{};
-    renderTabs();
-    renderAll();
+    dataLoaded.admins=true;
+    if(dataLoaded.members)initUI();
   });
   db.ref("challenge/members").on("value",snap=>{
     appData.members=snap.val()||{};
-    renderTabs();
-    renderAll();
+    dataLoaded.members=true;
+    if(dataLoaded.admins)initUI();
   });
+}
+
+function initUI(){
+  if(currentTab===null){
+    currentTab=isAdmin()?"dashboard":"members";
+  }
+  renderTabs();
+  renderAll();
 }
 
 function renderTabs(){
@@ -558,7 +569,72 @@ function renderMembersUser(el,myMemberId){
   const gl=getGoalLoss(m),prog=getProgress(m),lost=getLost(m),entries=entriesArray(m);
   const latest=entries.length>0?entries[entries.length-1].weight:m.startWeight;
   
-  el.innerHTML=`<div class="card"><h3>👤 Mein Profil</h3><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:16px;margin-bottom:16px"><div style="background:var(--dark-overlay);padding:16px;border-radius:12px;text-align:center"><div style="font-size:24px;font-weight:800;color:var(--accent)">${m.startWeight}</div><div style="font-size:12px;color:var(--dim)">Startgewicht (kg)</div></div><div style="background:var(--dark-overlay);padding:16px;border-radius:12px;text-align:center"><div style="font-size:24px;font-weight:800;color:var(--green)">${latest}</div><div style="font-size:12px;color:var(--dim)">Aktuell (kg)</div></div><div style="background:var(--dark-overlay);padding:16px;border-radius:12px;text-align:center"><div style="font-size:24px;font-weight:800;color:var(--pink)">${getGoalWeight(m)}</div><div style="font-size:12px;color:var(--dim)">Zielgewicht (kg)</div></div><div style="background:var(--dark-overlay);padding:16px;border-radius:12px;text-align:center"><div style="font-size:24px;font-weight:800;color:${lost>=0?'var(--green)':'var(--red)'}">${lost>=0?'-':'+'} ${Math.abs(lost).toFixed(1)}</div><div style="font-size:12px;color:var(--dim)">Verlust (kg)</div></div></div><div class="progress-row"><div class="progress-header"><span class="name">Fortschritt</span><span class="stats">${prog.toFixed(0)}%</span></div><div class="progress-track"><div class="progress-fill" style="width:${prog}%;background:linear-gradient(90deg,var(--accent),var(--pink))">${prog>15?`<span>${prog.toFixed(0)}%</span>`:""}</div>${prog<=15?`<span class="progress-label-outside">${prog.toFixed(0)}%</span>`:""}</div>${prog>=100?'<div class="goal-reached">🎉 Ziel erreicht!</div>':""}</div></div>`;
+  if(editingMember===myMemberId){
+    const pe=pendingMemberEdit||{startWeight:m.startWeight,goalWeight:getGoalWeight(m)};
+    el.innerHTML=`<div class="card"><h3>👤 Mein Profil bearbeiten</h3>
+      <div class="row" style="margin-bottom:16px">
+        <div class="field-sm"><label>Startgewicht (kg)</label><input type="number" step="0.1" id="em-start" value="${pe.startWeight}"></div>
+        <div class="field-sm"><label>Zielgewicht (kg)</label><input type="number" step="0.1" id="em-goal" value="${pe.goalWeight}"></div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn" onclick="saveMyProfile('${myMemberId}')">Speichern ✓</button>
+        <button class="btn btn-secondary" onclick="cancelMemberEdit()">Abbrechen</button>
+      </div>
+    </div>`;
+    return;
+  }
+  
+  el.innerHTML=`<div class="card"><h3>👤 Mein Profil</h3>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:16px;margin-bottom:16px">
+      <div style="background:var(--dark-overlay);padding:16px;border-radius:12px;text-align:center">
+        <div style="font-size:24px;font-weight:800;color:var(--accent)">${m.startWeight}</div>
+        <div style="font-size:12px;color:var(--dim)">Startgewicht (kg)</div>
+      </div>
+      <div style="background:var(--dark-overlay);padding:16px;border-radius:12px;text-align:center">
+        <div style="font-size:24px;font-weight:800;color:var(--green)">${latest}</div>
+        <div style="font-size:12px;color:var(--dim)">Aktuell (kg)</div>
+      </div>
+      <div style="background:var(--dark-overlay);padding:16px;border-radius:12px;text-align:center">
+        <div style="font-size:24px;font-weight:800;color:var(--pink)">${getGoalWeight(m)}</div>
+        <div style="font-size:12px;color:var(--dim)">Zielgewicht (kg)</div>
+      </div>
+      <div style="background:var(--dark-overlay);padding:16px;border-radius:12px;text-align:center">
+        <div style="font-size:24px;font-weight:800;color:${lost>=0?'var(--green)':'var(--red)'}">${lost>=0?'-':'+'} ${Math.abs(lost).toFixed(1)}</div>
+        <div style="font-size:12px;color:var(--dim)">Verlust (kg)</div>
+      </div>
+    </div>
+    <div class="progress-row">
+      <div class="progress-header"><span class="name">Fortschritt</span><span class="stats">${prog.toFixed(0)}%</span></div>
+      <div class="progress-track">
+        <div class="progress-fill" style="width:${prog}%;background:linear-gradient(90deg,var(--accent),var(--pink))">${prog>15?`<span>${prog.toFixed(0)}%</span>`:""}</div>
+        ${prog<=15?`<span class="progress-label-outside">${prog.toFixed(0)}%</span>`:""}
+      </div>
+      ${prog>=100?'<div class="goal-reached">🎉 Ziel erreicht!</div>':""}
+    </div>
+    <button class="btn" style="margin-top:16px" onclick="startMyProfileEdit('${myMemberId}')">✏️ Profil bearbeiten</button>
+  </div>`;
+}
+
+function startMyProfileEdit(id){
+  const m=appData.members[id];
+  editingMember=id;
+  pendingMemberEdit={startWeight:m.startWeight,goalWeight:getGoalWeight(m)};
+  renderMembers();
+}
+
+function saveMyProfile(id){
+  const startEl=document.getElementById("em-start");
+  const goalEl=document.getElementById("em-goal");
+  if(!startEl||!goalEl)return;
+
+  const sw=parseFloat(startEl.value);
+  const gw=parseFloat(goalEl.value);
+  if(isNaN(sw)||isNaN(gw))return;
+
+  editingMember=null;
+  pendingMemberEdit=null;
+  db.ref(`challenge/members/${id}`).update({startWeight:sw,goalWeight:gw});
+  showToast("Profil gespeichert ✓");
 }
 
 function startMemberEdit(id){
