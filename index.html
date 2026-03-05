@@ -53,6 +53,7 @@
   .header .meta strong{color:var(--yellow)}
   .user-bar{display:flex;justify-content:flex-end;align-items:center;gap:10px;margin-bottom:8px;font-size:13px;color:var(--dim)}
   .user-bar .email{color:var(--muted)}
+  .admin-badge{background:linear-gradient(135deg,var(--yellow),var(--pink));color:#fff;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700}
 
   .tabs{display:flex;border-bottom:1px solid var(--border);margin-bottom:20px;overflow-x:auto}
   .tab{padding:10px 20px;border:none;border-bottom:3px solid transparent;background:transparent;color:var(--muted);cursor:pointer;font-weight:400;font-size:14px;transition:all .2s;white-space:nowrap}
@@ -91,6 +92,8 @@
   .spinner{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle;margin-left:6px}
   .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--green);color:#fff;padding:10px 24px;border-radius:10px;font-size:14px;font-weight:600;z-index:999;opacity:0;transition:opacity .3s}
   .toast.show{opacity:1}
+  .link-info{background:rgba(99,102,241,0.1);border:1px solid var(--input-border);border-radius:10px;padding:12px;margin-top:12px;font-size:13px;color:var(--muted)}
+  .link-info strong{color:var(--text)}
   @keyframes spin{to{transform:rotate(360deg)}}
 </style>
 </head>
@@ -145,6 +148,7 @@
 
 <div id="appScreen" class="container hidden">
   <div class="user-bar">
+    <span id="adminBadge" class="admin-badge hidden">ADMIN</span>
     <span class="email" id="userEmail"></span>
     <button class="btn btn-secondary" style="padding:5px 12px;font-size:12px" onclick="handleLogout()">Ausloggen</button>
   </div>
@@ -152,13 +156,7 @@
     <h1 id="headerTitle">🔥 Abnehm-Challenge 2026</h1>
     <p class="meta" id="headerMeta"></p>
   </div>
-  <div class="tabs">
-    <button class="tab active" onclick="switchTab('dashboard',this)">📊 Dashboard</button>
-    <button class="tab" onclick="switchTab('checkin',this)">📝 Check-in</button>
-    <button class="tab" onclick="switchTab('ranking',this)">🏆 Ranking</button>
-    <button class="tab" onclick="switchTab('members',this)">👥 Teilnehmer</button>
-    <button class="tab" onclick="switchTab('settings',this)">⚙️ Settings</button>
-  </div>
+  <div class="tabs" id="tabsContainer"></div>
   <div id="tab-dashboard"></div>
   <div id="tab-checkin" class="hidden"></div>
   <div id="tab-ranking" class="hidden"></div>
@@ -190,18 +188,25 @@ const FIREBASE_CONFIG = {
   appId: "1:647578589564:web:ea52c1a720c6fac600ecf9"
 };
 
-// Fallback – wird beim Start aus Firebase geladen
 const DEFAULT_INVITE_CODE = "challenge2026";
-
 const COLORS=["#6366f1","#f43f5e","#10b981","#f59e0b","#3b82f6","#ec4899","#14b8a6","#8b5cf6","#ef4444","#06b6d4","#84cc16","#e879f9","#fb923c","#22d3ee","#a3e635"];
 
 let db=null,auth=null,currentUser=null;
-let appData={challengeName:"Abnehm-Challenge 2026",deadline:"2026-07-31",inviteCode:DEFAULT_INVITE_CODE,members:{}};
+let appData={challengeName:"Abnehm-Challenge 2026",deadline:"2026-07-31",inviteCode:DEFAULT_INVITE_CODE,members:{},admins:{}};
 let currentTab="dashboard",weightChart=null,isRegisterMode=false;
-let editingMember=null;
-let editingEntry=null;
-// Temporäre Werte für Member-Edit (damit Firebase-Listener sie nicht überschreibt)
-let pendingMemberEdit=null;
+let editingMember=null,editingEntry=null,pendingMemberEdit=null;
+
+function isAdmin(){
+  if(!currentUser)return false;
+  return appData.admins && appData.admins[currentUser.uid]===true;
+}
+
+function getMyMemberId(){
+  if(!currentUser)return null;
+  const members=Object.entries(appData.members||{});
+  const found=members.find(([id,m])=>m.linkedUserId===currentUser.uid);
+  return found?found[0]:null;
+}
 
 function init(){
   if(FIREBASE_CONFIG.apiKey==="DEIN-API-KEY"){show("setupScreen");return}
@@ -230,7 +235,6 @@ function showToast(msg){
   setTimeout(()=>t.classList.remove("show"),2500);
 }
 
-// ── Auth ──
 function toggleAuthMode(){
   isRegisterMode=!isRegisterMode;
   document.getElementById("authSubtitle").textContent=isRegisterMode?"Erstelle ein neues Konto.":"Melde dich an, um loszulegen.";
@@ -276,7 +280,8 @@ async function handleAuth(){
 
   if(isRegisterMode){
     const code=document.getElementById("inviteCode").value.trim();
-    const validCode=appData.inviteCode||DEFAULT_INVITE_CODE;
+    const snap=await db.ref("challenge/inviteCode").once("value");
+    const validCode=snap.val()||DEFAULT_INVITE_CODE;
     if(code!==validCode){
       errEl.textContent="Ungültiger Einladungscode.";
       return;
@@ -307,7 +312,6 @@ async function handleReset(){
 
 function handleLogout(){auth.signOut()}
 
-// ── App ──
 function startApp(){
   show("appScreen");
   document.getElementById("userEmail").textContent=currentUser.email;
@@ -315,13 +319,27 @@ function startApp(){
     if(snap.val()){
       appData={...appData,...snap.val()};
       if(!appData.members)appData.members={};
+      if(!appData.admins)appData.admins={};
       if(!appData.inviteCode)appData.inviteCode=DEFAULT_INVITE_CODE;
     }
+    renderTabs();
     renderAll();
   });
 }
 
-// ── Helpers ──
+function renderTabs(){
+  const admin=isAdmin();
+  document.getElementById("adminBadge").classList.toggle("hidden",!admin);
+  let tabs=`<button class="tab ${currentTab==='dashboard'?'active':''}" onclick="switchTab('dashboard',this)">📊 Dashboard</button>`;
+  tabs+=`<button class="tab ${currentTab==='checkin'?'active':''}" onclick="switchTab('checkin',this)">📝 Check-in</button>`;
+  tabs+=`<button class="tab ${currentTab==='ranking'?'active':''}" onclick="switchTab('ranking',this)">🏆 Ranking</button>`;
+  tabs+=`<button class="tab ${currentTab==='members'?'active':''}" onclick="switchTab('members',this)">👥 ${admin?'Teilnehmer':'Mein Profil'}</button>`;
+  if(admin){
+    tabs+=`<button class="tab ${currentTab==='settings'?'active':''}" onclick="switchTab('settings',this)">⚙️ Settings</button>`;
+  }
+  document.getElementById("tabsContainer").innerHTML=tabs;
+}
+
 function membersArray(){return Object.entries(appData.members||{}).map(([id,m])=>({id,...m}))}
 function getGoalLoss(m){
   if(m.goalWeight!=null)return Math.max(0,m.startWeight-m.goalWeight);
@@ -341,8 +359,8 @@ function getDaysLeft(){return Math.max(0,Math.ceil((new Date(appData.deadline)-n
 function medal(i){return i===0?"🥇":i===1?"🥈":i===2?"🥉":`#${i+1}`}
 function fmtDate(d){return new Date(d).toLocaleDateString("de-DE")}
 
-// ── Tabs ──
 function switchTab(name,btn){
+  if(name==='settings'&&!isAdmin())return;
   currentTab=name;
   document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
   if(btn)btn.classList.add("active");
@@ -362,21 +380,21 @@ function renderAll(){
   else if(currentTab==="settings")renderSettings();
 }
 
-// ── DASHBOARD ──
 function renderDashboard(){
   const el=document.getElementById("tab-dashboard"),members=membersArray();
   if(members.length===0){
-    el.innerHTML=`<div class="card empty"><div class="icon">🚀</div><h2>Starte deine Challenge!</h2><p style="color:var(--muted)">Füge Teilnehmer unter "Teilnehmer" hinzu.</p><button class="btn" style="margin-top:16px" onclick="switchTab('members',document.querySelectorAll('.tab')[3])">Teilnehmer hinzufügen →</button></div>`;
+    el.innerHTML=`<div class="card empty"><div class="icon">🚀</div><h2>Starte deine Challenge!</h2><p style="color:var(--muted)">${isAdmin()?'Füge Teilnehmer unter "Teilnehmer" hinzu.':'Warte bis der Admin Teilnehmer hinzufügt.'}</p>${isAdmin()?`<button class="btn" style="margin-top:16px" onclick="switchTab('members',document.querySelectorAll('.tab')[3])">Teilnehmer hinzufügen →</button>`:''}</div>`;
     return;
   }
   const ranked=getRanking();
   let html=ranked.map((m,i)=>{
     const gl=getGoalLoss(m),prog=getProgress(m),lost=getLost(m);
     const color=prog>=100?"linear-gradient(90deg,#10b981,#34d399)":`linear-gradient(90deg,${COLORS[i%COLORS.length]},${COLORS[(i+1)%COLORS.length]})`;
-    return`<div class="progress-row"><div class="progress-header"><span class="name">${medal(i)} ${m.name}</span><span class="stats">${lost>=0?"-":"+"}${Math.abs(lost).toFixed(1)} / ${gl.toFixed(1)} kg</span></div><div class="progress-track"><div class="progress-fill" style="width:${prog}%;background:${color}">${prog>15?`<span>${prog.toFixed(0)}%</span>`:""}</div>${prog<=15?`<span class="progress-label-outside">${prog.toFixed(0)}%</span>`:""}</div>${prog>=100?'<div class="goal-reached">🎉 Ziel erreicht!</div>':""}</div>`;
+    const stats=isAdmin()?`${lost>=0?"-":"+"}${Math.abs(lost).toFixed(1)} / ${gl.toFixed(1)} kg`:`${prog.toFixed(0)}%`;
+    return`<div class="progress-row"><div class="progress-header"><span class="name">${medal(i)} ${m.name}</span><span class="stats">${stats}</span></div><div class="progress-track"><div class="progress-fill" style="width:${prog}%;background:${color}">${prog>15?`<span>${prog.toFixed(0)}%</span>`:""}</div>${prog<=15?`<span class="progress-label-outside">${prog.toFixed(0)}%</span>`:""}</div>${prog>=100?'<div class="goal-reached">🎉 Ziel erreicht!</div>':""}</div>`;
   }).join("");
 
-  let chart=members.some(m=>entriesArray(m).length>1)?`<div class="card"><h3>📈 Gewichtsverlust über Zeit (kg)</h3><div class="chart-container"><canvas id="weightChartCanvas"></canvas></div></div>`:"";
+  let chart=(isAdmin()&&members.some(m=>entriesArray(m).length>1))?`<div class="card"><h3>📈 Gewichtsverlust über Zeit (kg)</h3><div class="chart-container"><canvas id="weightChartCanvas"></canvas></div></div>`:"";
   el.innerHTML=`<div class="card"><h3>Fortschritt zum Ziel</h3>${html}</div>${chart}`;
   if(chart)renderChart();
 }
@@ -396,14 +414,37 @@ function renderChart(){
   weightChart=new Chart(canvas,{type:"line",data:{labels:sorted.map(d=>d.slice(5)),datasets},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:"#94a3b8"}}},scales:{x:{ticks:{color:"#64748b"},grid:{color:"rgba(99,102,241,0.1)"}},y:{ticks:{color:"#64748b"},grid:{color:"rgba(99,102,241,0.1)"}}}}});
 }
 
-// ── CHECK-IN ──
 function renderCheckin(){
-  const el=document.getElementById("tab-checkin"),members=membersArray();
-  if(members.length===0){el.innerHTML=`<div class="card"><h3>📝 Check-in</h3><p style="color:var(--muted)">Erst Teilnehmer hinzufügen!</p></div>`;return}
+  const el=document.getElementById("tab-checkin");
+  const admin=isAdmin();
+  const myMemberId=getMyMemberId();
+  const members=admin?membersArray():membersArray().filter(m=>m.id===myMemberId);
+  
+  if(members.length===0){
+    if(admin){
+      el.innerHTML=`<div class="card"><h3>📝 Check-in</h3><p style="color:var(--muted)">Erst Teilnehmer hinzufügen!</p></div>`;
+    }else{
+      el.innerHTML=`<div class="card"><h3>📝 Check-in</h3><p style="color:var(--muted)">Dein Profil ist noch nicht mit einem Teilnehmer verknüpft.</p><p style="color:var(--dim);font-size:13px;margin-top:8px">Bitte den Admin, dein Konto mit deinem Teilnehmer-Profil zu verknüpfen.</p></div>`;
+    }
+    return;
+  }
+  
   const today=new Date().toISOString().slice(0,10);
-  const opts=members.map(m=>`<option value="${m.id}">${m.name}</option>`).join("");
-  el.innerHTML=`<div class="card"><h3>📝 Wöchentlicher Check-in</h3><div class="row"><div class="field"><label>Teilnehmer</label><select id="ci-member"><option value="">Wählen...</option>${opts}</select></div><div class="field-date"><label>Datum</label><input type="date" id="ci-date" value="${today}"></div><div class="field-sm"><label>Gewicht (kg)</label><input type="number" step="0.1" id="ci-weight" placeholder="z.B. 82.5"></div><button class="btn" onclick="addEntry()" style="align-self:flex-end">Eintragen ✓</button></div><div id="ci-entries" style="margin-top:20px"></div></div>`;
-  document.getElementById("ci-member").addEventListener("change",()=>{editingEntry=null;renderEntries()});
+  let selectHtml='';
+  if(admin){
+    const opts=members.map(m=>`<option value="${m.id}">${m.name}</option>`).join("");
+    selectHtml=`<div class="field"><label>Teilnehmer</label><select id="ci-member"><option value="">Wählen...</option>${opts}</select></div>`;
+  }else{
+    selectHtml=`<input type="hidden" id="ci-member" value="${myMemberId}"><div class="field"><label>Teilnehmer</label><input type="text" value="${members[0].name}" disabled></div>`;
+  }
+  
+  el.innerHTML=`<div class="card"><h3>📝 Wöchentlicher Check-in</h3><div class="row">${selectHtml}<div class="field-date"><label>Datum</label><input type="date" id="ci-date" value="${today}"></div><div class="field-sm"><label>Gewicht (kg)</label><input type="number" step="0.1" id="ci-weight" placeholder="z.B. 82.5"></div><button class="btn" onclick="addEntry()" style="align-self:flex-end">Eintragen ✓</button></div><div id="ci-entries" style="margin-top:20px"></div></div>`;
+  
+  if(admin){
+    document.getElementById("ci-member").addEventListener("change",()=>{editingEntry=null;renderEntries()});
+  }else{
+    renderEntries();
+  }
 }
 
 function renderEntries(){
@@ -434,39 +475,72 @@ function addEntry(){
   const mid=document.getElementById("ci-member").value,date=document.getElementById("ci-date").value,weight=parseFloat(document.getElementById("ci-weight").value);
   if(!mid||!date||isNaN(weight))return;
   const m=appData.members[mid];
-  if(m&&m.entries){const ex=Object.entries(m.entries).find(([k,v])=>v.date===date);if(ex){db.ref(`challenge/members/${mid}/entries/${ex[0]}`).set({date,weight});document.getElementById("ci-weight").value="";return}}
+  if(m&&m.entries){const ex=Object.entries(m.entries).find(([k,v])=>v.date===date);if(ex){db.ref(`challenge/members/${mid}/entries/${ex[0]}`).set({date,weight});document.getElementById("ci-weight").value="";showToast("Eintrag aktualisiert ✓");return}}
   db.ref(`challenge/members/${mid}/entries`).push({date,weight});
   document.getElementById("ci-weight").value="";
+  showToast("Eintrag hinzugefügt ✓");
 }
 
-function deleteEntry(mid,key){db.ref(`challenge/members/${mid}/entries/${key}`).remove()}
+function deleteEntry(mid,key){if(confirm("Eintrag wirklich löschen?"))db.ref(`challenge/members/${mid}/entries/${key}`).remove()}
 
-// ── RANKING ──
 function renderRanking(){
   const el=document.getElementById("tab-ranking"),ranked=getRanking();
+  const admin=isAdmin();
   if(ranked.length===0){el.innerHTML=`<div class="card"><h3>🏆 Leaderboard</h3><p style="color:var(--muted)">Noch keine Teilnehmer.</p></div>`;return}
   el.innerHTML=`<div class="card"><h3>🏆 Leaderboard</h3>${ranked.map((m,i)=>{
-    const gl=getGoalLoss(m),prog=getProgress(m),lost=getLost(m),entries=entriesArray(m),latest=entries.length>0?entries[entries.length-1].weight:m.startWeight,lc=lost>=0?"var(--green)":"var(--red)";
-    return`<div class="rank-item ${i===0?"top":""}"><div class="rank-medal">${medal(i)}</div><div class="rank-info"><div class="rank-name">${m.name}</div><div class="rank-detail">${m.startWeight} → ${latest} kg · <span style="color:${lc}">${lost>=0?"-":"+"}${Math.abs(lost).toFixed(1)} kg</span></div></div><div class="rank-pct"><div class="pct" style="color:${COLORS[i%COLORS.length]}">${prog.toFixed(0)}%</div><div class="goal">Ziel: ${getGoalWeight(m)} kg</div></div></div>`;
+    const prog=getProgress(m),lost=getLost(m);
+    const lc=lost>=0?"var(--green)":"var(--red)";
+    let detail='';
+    if(admin){
+      const entries=entriesArray(m),latest=entries.length>0?entries[entries.length-1].weight:m.startWeight;
+      detail=`${m.startWeight} → ${latest} kg · <span style="color:${lc}">${lost>=0?"-":"+"}${Math.abs(lost).toFixed(1)} kg</span>`;
+    }else{
+      detail=`<span style="color:${lc}">${lost>=0?"-":"+"}${Math.abs(lost).toFixed(1)} kg abgenommen</span>`;
+    }
+    return`<div class="rank-item ${i===0?"top":""}"><div class="rank-medal">${medal(i)}</div><div class="rank-info"><div class="rank-name">${m.name}</div><div class="rank-detail">${detail}</div></div><div class="rank-pct"><div class="pct" style="color:${COLORS[i%COLORS.length]}">${prog.toFixed(0)}%</div>${admin?`<div class="goal">Ziel: ${getGoalWeight(m)} kg</div>`:''}</div></div>`;
   }).join("")}</div>`;
 }
 
-// ── MEMBERS ──
 function renderMembers(){
-  const el=document.getElementById("tab-members"),members=membersArray();
+  const el=document.getElementById("tab-members");
+  const admin=isAdmin();
+  const myMemberId=getMyMemberId();
+  
+  if(admin){
+    renderMembersAdmin(el);
+  }else{
+    renderMembersUser(el,myMemberId);
+  }
+}
+
+function renderMembersAdmin(el){
+  const members=membersArray();
   let list="";
   if(members.length>0){
     list=`<div class="card"><h3>Aktuelle Teilnehmer</h3>${members.map((m,i)=>{
       if(editingMember===m.id){
-        // Verwende pendingMemberEdit-Werte falls vorhanden (damit Firebase-Rerender nichts überschreibt)
         const pe=pendingMemberEdit||{name:m.name,startWeight:m.startWeight,goalWeight:getGoalWeight(m)};
         return`<div class="member-edit-row"><div class="row" style="margin-bottom:8px"><div class="field"><label>Name</label><input id="em-name" value="${pe.name}"></div><div class="field-sm"><label>Startgewicht (kg)</label><input type="number" step="0.1" id="em-start" value="${pe.startWeight}"></div><div class="field-sm"><label>Zielgewicht (kg)</label><input type="number" step="0.1" id="em-goal" value="${pe.goalWeight}"></div></div><div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn btn-sm" onclick="saveMemberEdit('${m.id}')">Speichern ✓</button><button class="btn btn-sm btn-secondary" onclick="cancelMemberEdit()">Abbrechen</button></div></div>`;
       }
       const gl=getGoalLoss(m);
-      return`<div class="member-row"><div><span style="font-weight:600;color:${COLORS[i%COLORS.length]}">${m.name}</span><span style="color:var(--dim);font-size:13px;margin-left:10px">Start: ${m.startWeight} kg · Ziel: ${getGoalWeight(m)} kg (−${gl.toFixed(1)} kg)</span></div><div style="display:flex;gap:6px"><button class="btn btn-secondary btn-sm" onclick="startMemberEdit('${m.id}')">✏️</button><button class="btn btn-danger" onclick="removeMember('${m.id}')">Entfernen</button></div></div>`;
+      const linked=m.linkedUserId?'✓ Verknüpft':'⚠️ Nicht verknüpft';
+      const linkedColor=m.linkedUserId?'var(--green)':'var(--yellow)';
+      return`<div class="member-row"><div><span style="font-weight:600;color:${COLORS[i%COLORS.length]}">${m.name}</span><span style="color:var(--dim);font-size:13px;margin-left:10px">Start: ${m.startWeight} kg · Ziel: ${getGoalWeight(m)} kg (−${gl.toFixed(1)} kg)</span><span style="color:${linkedColor};font-size:11px;margin-left:10px">${linked}</span></div><div style="display:flex;gap:6px"><button class="btn btn-secondary btn-sm" onclick="startMemberEdit('${m.id}')">✏️</button><button class="btn btn-secondary btn-sm" onclick="linkMember('${m.id}')">🔗</button><button class="btn btn-danger" onclick="removeMember('${m.id}')">Entfernen</button></div></div>`;
     }).join("")}</div>`;
   }
-  el.innerHTML=`<div class="card"><h3>Teilnehmer hinzufügen</h3><div class="row"><div class="field"><label>Name</label><input id="m-name" placeholder="z.B. Anna"></div><div class="field-sm"><label>Startgewicht (kg)</label><input type="number" step="0.1" id="m-start" placeholder="z.B. 90"></div><div class="field-sm"><label>Zielgewicht (kg)</label><input type="number" step="0.1" id="m-goal" placeholder="z.B. 82"></div><button class="btn" onclick="addMember()" style="align-self:flex-end">Hinzufügen +</button></div></div>${list}`;
+  el.innerHTML=`<div class="card"><h3>Teilnehmer hinzufügen</h3><div class="row"><div class="field"><label>Name</label><input id="m-name" placeholder="z.B. Anna"></div><div class="field-sm"><label>Startgewicht (kg)</label><input type="number" step="0.1" id="m-start" placeholder="z.B. 90"></div><div class="field-sm"><label>Zielgewicht (kg)</label><input type="number" step="0.1" id="m-goal" placeholder="z.B. 82"></div><button class="btn" onclick="addMember()" style="align-self:flex-end">Hinzufügen +</button></div><div class="link-info"><strong>💡 Tipp:</strong> Nach dem Hinzufügen kannst du mit dem 🔗-Button den Teilnehmer mit einem Benutzerkonto verknüpfen. Nur verknüpfte Benutzer können ihre eigenen Einträge sehen und bearbeiten.</div></div>${list}`;
+}
+
+function renderMembersUser(el,myMemberId){
+  if(!myMemberId){
+    el.innerHTML=`<div class="card"><h3>👤 Mein Profil</h3><p style="color:var(--muted)">Dein Konto ist noch nicht mit einem Teilnehmer-Profil verknüpft.</p><p style="color:var(--dim);font-size:13px;margin-top:8px">Bitte den Admin, dein Konto zu verknüpfen.</p></div>`;
+    return;
+  }
+  const m={id:myMemberId,...appData.members[myMemberId]};
+  const gl=getGoalLoss(m),prog=getProgress(m),lost=getLost(m),entries=entriesArray(m);
+  const latest=entries.length>0?entries[entries.length-1].weight:m.startWeight;
+  
+  el.innerHTML=`<div class="card"><h3>👤 Mein Profil</h3><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:16px;margin-bottom:16px"><div style="background:var(--dark-overlay);padding:16px;border-radius:12px;text-align:center"><div style="font-size:24px;font-weight:800;color:var(--accent)">${m.startWeight}</div><div style="font-size:12px;color:var(--dim)">Startgewicht (kg)</div></div><div style="background:var(--dark-overlay);padding:16px;border-radius:12px;text-align:center"><div style="font-size:24px;font-weight:800;color:var(--green)">${latest}</div><div style="font-size:12px;color:var(--dim)">Aktuell (kg)</div></div><div style="background:var(--dark-overlay);padding:16px;border-radius:12px;text-align:center"><div style="font-size:24px;font-weight:800;color:var(--pink)">${getGoalWeight(m)}</div><div style="font-size:12px;color:var(--dim)">Zielgewicht (kg)</div></div><div style="background:var(--dark-overlay);padding:16px;border-radius:12px;text-align:center"><div style="font-size:24px;font-weight:800;color:${lost>=0?'var(--green)':'var(--red)'}">${lost>=0?'-':'+'} ${Math.abs(lost).toFixed(1)}</div><div style="font-size:12px;color:var(--dim)">Verlust (kg)</div></div></div><div class="progress-row"><div class="progress-header"><span class="name">Fortschritt</span><span class="stats">${prog.toFixed(0)}%</span></div><div class="progress-track"><div class="progress-fill" style="width:${prog}%;background:linear-gradient(90deg,var(--accent),var(--pink))">${prog>15?`<span>${prog.toFixed(0)}%</span>`:""}</div>${prog<=15?`<span class="progress-label-outside">${prog.toFixed(0)}%</span>`:""}</div>${prog>=100?'<div class="goal-reached">🎉 Ziel erreicht!</div>':""}</div></div>`;
 }
 
 function startMemberEdit(id){
@@ -489,7 +563,6 @@ function saveMemberEdit(id){
   const gw=parseFloat(goalEl.value);
   if(!name||isNaN(sw)||isNaN(gw))return;
 
-  // Zuerst State zurücksetzen, dann an Firebase schreiben
   editingMember=null;
   pendingMemberEdit=null;
   db.ref(`challenge/members/${id}`).update({name,startWeight:sw,goalWeight:gw});
@@ -502,12 +575,34 @@ function addMember(){
   const today=new Date().toISOString().slice(0,10),ref=db.ref("challenge/members").push();
   ref.set({name,startWeight:sw,goalWeight:gw,entries:{[ref.push().key]:{date:today,weight:sw}}});
   document.getElementById("m-name").value="";document.getElementById("m-start").value="";document.getElementById("m-goal").value="";
+  showToast("Teilnehmer hinzugefügt ✓");
 }
 
 function removeMember(id){if(confirm("Teilnehmer wirklich entfernen?"))db.ref(`challenge/members/${id}`).remove()}
 
-// ── SETTINGS ──
+function linkMember(id){
+  const email=prompt("E-Mail des Benutzers eingeben, der mit diesem Teilnehmer verknüpft werden soll:");
+  if(!email)return;
+  
+  // Wir speichern temporär die E-Mail und warten darauf, dass der Benutzer sich einloggt
+  // Alternativ: Wenn der Admin die UID kennt, kann er diese direkt eingeben
+  const uid=prompt("Firebase UID des Benutzers eingeben (aus Firebase Console > Authentication):");
+  if(!uid)return;
+  
+  // Prüfen ob diese UID bereits verknüpft ist
+  const members=membersArray();
+  const existing=members.find(m=>m.linkedUserId===uid&&m.id!==id);
+  if(existing){
+    alert(`Diese UID ist bereits mit "${existing.name}" verknüpft.`);
+    return;
+  }
+  
+  db.ref(`challenge/members/${id}/linkedUserId`).set(uid);
+  showToast("Teilnehmer verknüpft ✓");
+}
+
 function renderSettings(){
+  if(!isAdmin()){el.innerHTML='';return}
   const el=document.getElementById("tab-settings");
   el.innerHTML=`<div class="card"><h3>⚙️ Challenge-Einstellungen</h3>
     <div class="row" style="margin-bottom:16px">
@@ -522,6 +617,14 @@ function renderSettings(){
       </div>
       <p style="color:var(--dim);font-size:12px;margin-top:6px">Neue Benutzer müssen diesen Code bei der Registrierung eingeben.</p>
     </div>
+  </div>
+  <div class="card"><h3>👑 Admin-Verwaltung</h3>
+    <div class="row">
+      <div class="field"><label>Firebase UID zum Admin machen</label><input id="s-admin-uid" placeholder="Firebase UID"></div>
+      <button class="btn" onclick="addAdmin()" style="align-self:flex-end">Als Admin hinzufügen</button>
+    </div>
+    <p style="color:var(--dim);font-size:12px;margin-top:6px">Deine UID: <code style="background:var(--dark-overlay);padding:2px 6px;border-radius:4px">${currentUser.uid}</code></p>
+    <div style="margin-top:12px">${Object.keys(appData.admins||{}).map(uid=>`<div class="entry-row"><span>${uid}</span>${uid!==currentUser.uid?`<button class="del-btn" onclick="removeAdmin('${uid}')">×</button>`:''}</div>`).join('')}</div>
   </div>
   <div style="text-align:center;margin-top:30px;padding-top:20px;border-top:1px solid var(--border)">
     <button class="btn btn-danger" onclick="resetAll()" style="padding:10px 24px">🗑️ Alle Daten löschen</button>
@@ -542,10 +645,24 @@ function saveInviteCode(){
   showToast("Einladungscode gespeichert ✓");
 }
 
+function addAdmin(){
+  const uid=document.getElementById("s-admin-uid").value.trim();
+  if(!uid){showToast("Bitte UID eingeben");return}
+  db.ref(`challenge/admins/${uid}`).set(true);
+  document.getElementById("s-admin-uid").value="";
+  showToast("Admin hinzugefügt ✓");
+}
+
+function removeAdmin(uid){
+  if(!confirm("Admin-Rechte entziehen?"))return;
+  db.ref(`challenge/admins/${uid}`).remove();
+}
+
 function resetAll(){
   if(!confirm("WIRKLICH alle Daten löschen?"))return;
   if(!confirm("Bist du GANZ sicher?"))return;
-  db.ref("challenge").set({challengeName:"Abnehm-Challenge 2026",deadline:"2026-07-31",inviteCode:appData.inviteCode||DEFAULT_INVITE_CODE,members:{}});
+  const admins={};admins[currentUser.uid]=true;
+  db.ref("challenge").set({challengeName:"Abnehm-Challenge 2026",deadline:"2026-07-31",inviteCode:appData.inviteCode||DEFAULT_INVITE_CODE,members:{},admins});
 }
 
 init();
