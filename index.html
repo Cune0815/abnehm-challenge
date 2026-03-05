@@ -153,7 +153,7 @@
     <button class="btn btn-secondary" style="padding:5px 12px;font-size:12px" onclick="handleLogout()">Ausloggen</button>
   </div>
   <div class="header">
-    <h1 id="headerTitle">🔥 Gewichts-Challenge 2026 🔥</h1>
+    <h1 id="headerTitle">🔥 Abnehm-Challenge 2026</h1>
     <p class="meta" id="headerMeta"></p>
   </div>
   <div class="tabs" id="tabsContainer"></div>
@@ -326,7 +326,7 @@ function startApp(){
   
   // Lade Daten einzeln, da Firebase Rules pro Pfad gelten
   db.ref("challenge/challengeName").on("value",snap=>{
-    appData.challengeName=snap.val()||"Abnehm-Challenge 2026";
+    appData.challengeName=snap.val()||"Gewichts-Challenge 2026";
     if(dataLoaded.admins&&dataLoaded.members)renderAll();
   });
   db.ref("challenge/deadline").on("value",snap=>{
