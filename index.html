@@ -328,42 +328,62 @@ function checkBadgesOnCheckin(member,checkinHour){
   const badges=member.badges||{};
   const now=new Date();
   
-  if(entries.length>=1&&!badges.firstCheckin)awardBadge(member.id,'firstCheckin',true);
-  if(member.startWeight&&member.goalWeight&&!badges.profileComplete)awardBadge(member.id,'profileComplete',true);
+  const newBadges=[];
+  
+  if(entries.length>=1&&!badges.firstCheckin)newBadges.push('firstCheckin');
+  if(member.startWeight&&member.goalWeight&&!badges.profileComplete)newBadges.push('profileComplete');
   
   if(entries.length>=1){
     const firstEntry=new Date(entries[0].date);
     const days=Math.floor((now-firstEntry)/86400000);
-    if(days>=7&&!badges.week1)awardBadge(member.id,'week1',true);
-    if(days>=30&&!badges.month1)awardBadge(member.id,'month1',true);
+    if(days>=7&&!badges.week1)newBadges.push('week1');
+    if(days>=30&&!badges.month1)newBadges.push('month1');
   }
   
-  if(streak>=4&&!badges.streak4)awardBadge(member.id,'streak4',true);
-  if(streak>=8&&!badges.streak8)awardBadge(member.id,'streak8',true);
-  if(entries.length>=10&&!badges.entries10)awardBadge(member.id,'entries10',true);
-  if(entries.length>=25&&!badges.entries25)awardBadge(member.id,'entries25',true);
+  if(streak>=4&&!badges.streak4)newBadges.push('streak4');
+  if(streak>=8&&!badges.streak8)newBadges.push('streak8');
+  if(entries.length>=10&&!badges.entries10)newBadges.push('entries10');
+  if(entries.length>=25&&!badges.entries25)newBadges.push('entries25');
   
-  if(progress>=10&&!badges.progress10)awardBadge(member.id,'progress10',true);
-  if(progress>=25&&!badges.progress25)awardBadge(member.id,'progress25',true);
-  if(progress>=50&&!badges.progress50)awardBadge(member.id,'progress50',true);
-  if(progress>=75&&!badges.progress75)awardBadge(member.id,'progress75',true);
-  if(progress>=100&&!badges.progress100)awardBadge(member.id,'progress100',true);
+  if(progress>=10&&!badges.progress10)newBadges.push('progress10');
+  if(progress>=25&&!badges.progress25)newBadges.push('progress25');
+  if(progress>=50&&!badges.progress50)newBadges.push('progress50');
+  if(progress>=75&&!badges.progress75)newBadges.push('progress75');
+  if(progress>=100&&!badges.progress100)newBadges.push('progress100');
   
   const ranked=getRanking();
   const rankIdx=ranked.findIndex(m=>m.id===member.id);
-  if(rankIdx>=0&&rankIdx<3&&!badges.top3)awardBadge(member.id,'top3',true);
-  if(rankIdx===0&&progress>=50&&!badges.champion)awardBadge(member.id,'champion',true);
+  if(rankIdx>=0&&rankIdx<3&&!badges.top3)newBadges.push('top3');
+  if(rankIdx===0&&progress>=50&&!badges.champion)newBadges.push('champion');
   
-  if(checkinHour<7&&!badges.earlyBird)awardBadge(member.id,'earlyBird',true);
-  if(checkinHour>=23&&!badges.nightOwl)awardBadge(member.id,'nightOwl',true);
-  if(membersArray().length<=3&&!badges.founder)awardBadge(member.id,'founder',true);
+  if(checkinHour<7&&!badges.earlyBird)newBadges.push('earlyBird');
+  if(checkinHour>=23&&!badges.nightOwl)newBadges.push('nightOwl');
+  if(membersArray().length<=3&&!badges.founder)newBadges.push('founder');
+  
+  if(newBadges.length>0){
+    // Update local data immediately
+    if(!appData.members[member.id].badges){
+      appData.members[member.id].badges={};
+    }
+    const updates={};
+    newBadges.forEach(b=>{
+      updates[b]=now.toISOString();
+      appData.members[member.id].badges[b]=now.toISOString();
+    });
+    
+    // Write to Firebase
+    db.ref(`challenge/members/${member.id}/badges`).update(updates);
+    
+    // Show popups for new badges
+    badgePopupQueue=newBadges.slice();
+    setTimeout(()=>showBadgePopup(badgePopupQueue[0]),500);
+  }
 }
 
 let badgeCheckInProgress=false;
 
 function checkBadgesSilent(member){
   if(!member||!member.id||badgeCheckInProgress)return;
-  badgeCheckInProgress=true;
   
   const entries=entriesArray(member);
   const progress=getProgress(member);
@@ -373,44 +393,55 @@ function checkBadgesSilent(member){
   
   const updates={};
   
-  if(entries.length>=1&&!badges.firstCheckin)updates.firstCheckin=new Date().toISOString();
-  if(member.startWeight&&member.goalWeight&&!badges.profileComplete)updates.profileComplete=new Date().toISOString();
+  if(entries.length>=1&&!badges.firstCheckin)updates.firstCheckin=now.toISOString();
+  if(member.startWeight&&member.goalWeight&&!badges.profileComplete)updates.profileComplete=now.toISOString();
   
   if(entries.length>=1){
     const firstEntry=new Date(entries[0].date);
     const days=Math.floor((now-firstEntry)/86400000);
-    if(days>=7&&!badges.week1)updates.week1=new Date().toISOString();
-    if(days>=30&&!badges.month1)updates.month1=new Date().toISOString();
+    if(days>=7&&!badges.week1)updates.week1=now.toISOString();
+    if(days>=30&&!badges.month1)updates.month1=now.toISOString();
   }
   
-  if(streak>=4&&!badges.streak4)updates.streak4=new Date().toISOString();
-  if(streak>=8&&!badges.streak8)updates.streak8=new Date().toISOString();
-  if(entries.length>=10&&!badges.entries10)updates.entries10=new Date().toISOString();
-  if(entries.length>=25&&!badges.entries25)updates.entries25=new Date().toISOString();
+  if(streak>=4&&!badges.streak4)updates.streak4=now.toISOString();
+  if(streak>=8&&!badges.streak8)updates.streak8=now.toISOString();
+  if(entries.length>=10&&!badges.entries10)updates.entries10=now.toISOString();
+  if(entries.length>=25&&!badges.entries25)updates.entries25=now.toISOString();
   
-  if(progress>=10&&!badges.progress10)updates.progress10=new Date().toISOString();
-  if(progress>=25&&!badges.progress25)updates.progress25=new Date().toISOString();
-  if(progress>=50&&!badges.progress50)updates.progress50=new Date().toISOString();
-  if(progress>=75&&!badges.progress75)updates.progress75=new Date().toISOString();
-  if(progress>=100&&!badges.progress100)updates.progress100=new Date().toISOString();
+  if(progress>=10&&!badges.progress10)updates.progress10=now.toISOString();
+  if(progress>=25&&!badges.progress25)updates.progress25=now.toISOString();
+  if(progress>=50&&!badges.progress50)updates.progress50=now.toISOString();
+  if(progress>=75&&!badges.progress75)updates.progress75=now.toISOString();
+  if(progress>=100&&!badges.progress100)updates.progress100=now.toISOString();
   
   const ranked=getRanking();
   const rankIdx=ranked.findIndex(m=>m.id===member.id);
-  if(rankIdx>=0&&rankIdx<3&&!badges.top3)updates.top3=new Date().toISOString();
-  if(rankIdx===0&&progress>=50&&!badges.champion)updates.champion=new Date().toISOString();
+  if(rankIdx>=0&&rankIdx<3&&!badges.top3)updates.top3=now.toISOString();
+  if(rankIdx===0&&progress>=50&&!badges.champion)updates.champion=now.toISOString();
   
   const hasEarly=entries.some(e=>e.hour!==undefined&&e.hour<7);
   const hasLate=entries.some(e=>e.hour!==undefined&&e.hour>=23);
-  if(hasEarly&&!badges.earlyBird)updates.earlyBird=new Date().toISOString();
-  if(hasLate&&!badges.nightOwl)updates.nightOwl=new Date().toISOString();
-  if(membersArray().length<=3&&!badges.founder)updates.founder=new Date().toISOString();
+  if(hasEarly&&!badges.earlyBird)updates.earlyBird=now.toISOString();
+  if(hasLate&&!badges.nightOwl)updates.nightOwl=now.toISOString();
+  if(membersArray().length<=3&&!badges.founder)updates.founder=now.toISOString();
   
-  // Batch update all badges at once
+  // Only write if there are new badges
   if(Object.keys(updates).length>0){
-    db.ref(`challenge/members/${member.id}/badges`).update(updates);
+    badgeCheckInProgress=true;
+    
+    // Update local data immediately so UI shows correctly
+    if(!appData.members[member.id].badges){
+      appData.members[member.id].badges={};
+    }
+    Object.assign(appData.members[member.id].badges,updates);
+    
+    // Then write to Firebase
+    db.ref(`challenge/members/${member.id}/badges`).update(updates).then(()=>{
+      badgeCheckInProgress=false;
+    }).catch(()=>{
+      badgeCheckInProgress=false;
+    });
   }
-  
-  setTimeout(()=>{badgeCheckInProgress=false;},2000);
 }
 
 function getBadgeCount(member){return Object.keys(member.badges||{}).length;}
@@ -542,12 +573,46 @@ function startApp(){
   dataLoaded={admins:false,members:false};
   currentTab=null;
   badgePopupQueue=[];
+  badgeCheckInProgress=false;
   
-  db.ref("challenge/challengeName").on("value",snap=>{appData.challengeName=snap.val()||"Gewichts-Challenge 2026";if(dataLoaded.admins&&dataLoaded.members)renderAll();});
-  db.ref("challenge/deadline").on("value",snap=>{appData.deadline=snap.val()||"2026-07-31";if(dataLoaded.admins&&dataLoaded.members)renderAll();});
-  db.ref("challenge/inviteCode").on("value",snap=>{appData.inviteCode=snap.val()||DEFAULT_INVITE_CODE;});
-  db.ref("challenge/admins").on("value",snap=>{appData.admins=snap.val()||{};dataLoaded.admins=true;if(dataLoaded.members)initUI();});
-  db.ref("challenge/members").on("value",snap=>{appData.members=snap.val()||{};dataLoaded.members=true;if(dataLoaded.admins)initUI();});
+  // Load all data with listeners
+  db.ref("challenge/challengeName").on("value",snap=>{
+    appData.challengeName=snap.val()||"Gewichts-Challenge 2026";
+    if(dataLoaded.admins&&dataLoaded.members)renderAll();
+  });
+  
+  db.ref("challenge/deadline").on("value",snap=>{
+    appData.deadline=snap.val()||"2026-07-31";
+    if(dataLoaded.admins&&dataLoaded.members)renderAll();
+  });
+  
+  db.ref("challenge/inviteCode").on("value",snap=>{
+    appData.inviteCode=snap.val()||DEFAULT_INVITE_CODE;
+  });
+  
+  db.ref("challenge/admins").on("value",snap=>{
+    appData.admins=snap.val()||{};
+    const wasLoaded=dataLoaded.admins;
+    dataLoaded.admins=true;
+    if(!wasLoaded&&dataLoaded.members){
+      initUI();
+    }else if(dataLoaded.members){
+      renderTabs();
+      renderAll();
+    }
+  });
+  
+  db.ref("challenge/members").on("value",snap=>{
+    appData.members=snap.val()||{};
+    const wasLoaded=dataLoaded.members;
+    dataLoaded.members=true;
+    if(!wasLoaded&&dataLoaded.admins){
+      initUI();
+    }else if(dataLoaded.admins){
+      renderTabs();
+      renderAll();
+    }
+  });
 }
 
 function initUI(){
@@ -599,6 +664,8 @@ function renderTabs(){
 function switchTab(name){
   if(name==='settings'&&!isAdmin())return;
   if(name==='members'&&!isAdmin())return;
+  if(name==='profile'&&!getMyMemberId())return;
+  
   currentTab=name;
   document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
   document.querySelector(`.tab[onclick="switchTab('${name}')"]`)?.classList.add("active");
@@ -609,6 +676,8 @@ function switchTab(name){
 }
 
 function renderAll(){
+  if(!dataLoaded.admins||!dataLoaded.members)return;
+  
   document.getElementById("headerTitle").textContent="🔥 "+appData.challengeName;
   document.getElementById("headerMeta").innerHTML=`⏰ Noch <strong>${getDaysLeft()}</strong> Tage · ${membersArray().length} Teilnehmer`;
   if(currentTab==="dashboard")renderDashboard();
@@ -719,10 +788,16 @@ function renderRanking(){
 
 function renderProfile(){
   const el=document.getElementById("tab-profile"),myId=getMyMemberId();
-  if(!myId){el.innerHTML=`<div class="card"><h3>👤 Mein Profil</h3><p style="color:var(--muted)">Profil noch nicht verknüpft. Bitte Admin kontaktieren.</p></div>`;return;}
+  if(!myId){
+    el.innerHTML=`<div class="card"><h3>👤 Mein Profil</h3><p style="color:var(--muted)">Profil noch nicht verknüpft. Bitte Admin kontaktieren.</p></div>`;
+    return;
+  }
   
   const mData=appData.members[myId];
-  if(!mData){el.innerHTML=`<div class="card"><h3>👤 Mein Profil</h3><p style="color:var(--muted)">Profil nicht gefunden.</p></div>`;return;}
+  if(!mData){
+    el.innerHTML=`<div class="card"><h3>👤 Mein Profil</h3><p style="color:var(--muted)">Daten werden geladen...</p></div>`;
+    return;
+  }
   
   const m={id:myId,...mData};
   const prog=getProgress(m),cd=getCurrentDiff(m),entries=entriesArray(m);
@@ -735,10 +810,13 @@ function renderProfile(){
     return;
   }
   
-  el.innerHTML=`<div class="card"><h3>👤 Mein Profil</h3><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:16px;margin-bottom:16px"><div style="background:var(--dark-overlay);padding:16px;border-radius:12px;text-align:center"><div style="font-size:24px;font-weight:800;color:var(--accent)">${m.startWeight}</div><div style="font-size:12px;color:var(--dim)">Start (kg)</div></div><div style="background:var(--dark-overlay);padding:16px;border-radius:12px;text-align:center"><div style="font-size:24px;font-weight:800;color:var(--green)">${latest}</div><div style="font-size:12px;color:var(--dim)">Aktuell (kg)</div></div><div style="background:var(--dark-overlay);padding:16px;border-radius:12px;text-align:center"><div style="font-size:24px;font-weight:800;color:var(--pink)">${getGoalWeight(m)}</div><div style="font-size:12px;color:var(--dim)">Ziel (kg)</div></div><div style="background:var(--dark-overlay);padding:16px;border-radius:12px;text-align:center"><div style="font-size:24px;font-weight:800;color:${dc}">${formatDiff(cd,m)}</div><div style="font-size:12px;color:var(--dim)">Differenz</div></div></div><div class="progress-row"><div class="progress-header"><span>Fortschritt</span><span>${prog.toFixed(0)}%</span></div><div class="progress-track"><div class="progress-fill" style="width:${prog}%;background:linear-gradient(90deg,var(--accent),var(--pink))">${prog>15?`<span>${prog.toFixed(0)}%</span>`:""}</div></div></div><button class="btn" style="margin-top:16px" onclick="startMyProfileEdit('${myId}')">✏️ Bearbeiten</button>${renderBadgesSection(m)}</div>`;
+  // Render badges section with current data from appData
+  const badgesHtml=renderBadgesSection(m);
   
-  // Check badges silently after render
-  setTimeout(()=>checkBadgesSilent(m),100);
+  el.innerHTML=`<div class="card"><h3>👤 Mein Profil</h3><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:16px;margin-bottom:16px"><div style="background:var(--dark-overlay);padding:16px;border-radius:12px;text-align:center"><div style="font-size:24px;font-weight:800;color:var(--accent)">${m.startWeight}</div><div style="font-size:12px;color:var(--dim)">Start (kg)</div></div><div style="background:var(--dark-overlay);padding:16px;border-radius:12px;text-align:center"><div style="font-size:24px;font-weight:800;color:var(--green)">${latest}</div><div style="font-size:12px;color:var(--dim)">Aktuell (kg)</div></div><div style="background:var(--dark-overlay);padding:16px;border-radius:12px;text-align:center"><div style="font-size:24px;font-weight:800;color:var(--pink)">${getGoalWeight(m)}</div><div style="font-size:12px;color:var(--dim)">Ziel (kg)</div></div><div style="background:var(--dark-overlay);padding:16px;border-radius:12px;text-align:center"><div style="font-size:24px;font-weight:800;color:${dc}">${formatDiff(cd,m)}</div><div style="font-size:12px;color:var(--dim)">Differenz</div></div></div><div class="progress-row"><div class="progress-header"><span>Fortschritt</span><span>${prog.toFixed(0)}%</span></div><div class="progress-track"><div class="progress-fill" style="width:${prog}%;background:linear-gradient(90deg,var(--accent),var(--pink))">${prog>15?`<span>${prog.toFixed(0)}%</span>`:""}</div></div></div><button class="btn" style="margin-top:16px" onclick="startMyProfileEdit('${myId}')">✏️ Bearbeiten</button>${badgesHtml}</div>`;
+  
+  // Check and award badges silently (won't re-render, just updates Firebase)
+  checkBadgesSilent(m);
 }
 
 function startMyProfileEdit(id){editingMember=id;pendingMemberEdit={startWeight:appData.members[id].startWeight,goalWeight:getGoalWeight(appData.members[id])};renderProfile();}
