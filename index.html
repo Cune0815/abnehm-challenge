@@ -396,6 +396,10 @@ function switchTab(name,btn){
   ["dashboard","checkin","ranking","members","settings"].forEach(t=>
     document.getElementById("tab-"+t).classList.toggle("hidden",t!==name));
   editingMember=null;editingEntry=null;pendingMemberEdit=null;
+  // Force re-render of checkin tab
+  if(name==="checkin"){
+    document.getElementById("tab-checkin").innerHTML="";
+  }
   renderAll();
 }
 
@@ -403,7 +407,13 @@ function renderAll(){
   document.getElementById("headerTitle").textContent="🔥 "+appData.challengeName;
   document.getElementById("headerMeta").innerHTML=`⏰ Noch <strong>${getDaysLeft()}</strong> Tage bis ${fmtDate(appData.deadline)} · ${membersArray().length} Teilnehmer`;
   if(currentTab==="dashboard")renderDashboard();
-  else if(currentTab==="checkin")renderCheckin();
+  else if(currentTab==="checkin"){
+    if(!document.getElementById("ci-member")){
+      renderCheckin();
+    }else{
+      renderEntries();
+    }
+  }
   else if(currentTab==="ranking")renderRanking();
   else if(currentTab==="members")renderMembers();
   else if(currentTab==="settings")renderSettings();
@@ -471,7 +481,10 @@ function renderCheckin(){
   
   if(admin){
     document.getElementById("ci-member").addEventListener("change",()=>{editingEntry=null;renderEntries()});
-  }else{
+  }
+  // Immer Einträge anzeigen wenn Member ausgewählt
+  const selectedMember=document.getElementById("ci-member").value;
+  if(selectedMember){
     renderEntries();
   }
 }
@@ -504,13 +517,26 @@ function addEntry(){
   const mid=document.getElementById("ci-member").value,date=document.getElementById("ci-date").value,weight=parseFloat(document.getElementById("ci-weight").value);
   if(!mid||!date||isNaN(weight))return;
   const m=appData.members[mid];
-  if(m&&m.entries){const ex=Object.entries(m.entries).find(([k,v])=>v.date===date);if(ex){db.ref(`challenge/members/${mid}/entries/${ex[0]}`).set({date,weight});document.getElementById("ci-weight").value="";showToast("Eintrag aktualisiert ✓");return}}
+  if(m&&m.entries){
+    const ex=Object.entries(m.entries).find(([k,v])=>v.date===date);
+    if(ex){
+      db.ref(`challenge/members/${mid}/entries/${ex[0]}`).set({date,weight});
+      document.getElementById("ci-weight").value="";
+      showToast("Eintrag aktualisiert ✓");
+      return;
+    }
+  }
   db.ref(`challenge/members/${mid}/entries`).push({date,weight});
   document.getElementById("ci-weight").value="";
   showToast("Eintrag hinzugefügt ✓");
 }
 
-function deleteEntry(mid,key){if(confirm("Eintrag wirklich löschen?"))db.ref(`challenge/members/${mid}/entries/${key}`).remove()}
+function deleteEntry(mid,key){
+  if(confirm("Eintrag wirklich löschen?")){
+    db.ref(`challenge/members/${mid}/entries/${key}`).remove();
+    showToast("Eintrag gelöscht");
+  }
+}
 
 function renderRanking(){
   const el=document.getElementById("tab-ranking"),ranked=getRanking();
