@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Abnehm-Challenge Tracker</title>
+<title>Gewichts-Challenge Tracker</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <style>
   :root {
@@ -114,7 +114,7 @@
 <div id="loginScreen" class="auth-screen hidden">
   <div class="auth-box">
     <div style="font-size:48px;margin-bottom:16px">🔐</div>
-    <h1>Abnehm-Challenge</h1>
+    <h1>Gewichts-Challenge</h1>
     <p class="subtitle" id="authSubtitle">Melde dich an, um loszulegen.</p>
     <div id="loginForm">
       <input type="email" id="authEmail" placeholder="E-Mail-Adresse" style="margin-bottom:10px">
@@ -192,7 +192,7 @@ const DEFAULT_INVITE_CODE = "challenge2026";
 const COLORS=["#6366f1","#f43f5e","#10b981","#f59e0b","#3b82f6","#ec4899","#14b8a6","#8b5cf6","#ef4444","#06b6d4","#84cc16","#e879f9","#fb923c","#22d3ee","#a3e635"];
 
 let db=null,auth=null,currentUser=null;
-let appData={challengeName:"Abnehm-Challenge 2026",deadline:"2026-07-31",inviteCode:DEFAULT_INVITE_CODE,members:{},admins:{}};
+let appData={challengeName:"Gewichts-Challenge 2026",deadline:"2026-07-31",inviteCode:DEFAULT_INVITE_CODE,members:{},admins:{}};
 let currentTab=null,weightChart=null,isRegisterMode=false;
 let editingMember=null,editingEntry=null,pendingMemberEdit=null;
 let dataLoaded={admins:false,members:false};
@@ -376,8 +376,9 @@ function renderTabs(){
 }
 
 function membersArray(){return Object.entries(appData.members||{}).map(([id,m])=>({id,...m}))}
-function getGoalLoss(m){
-  if(m.goalWeight!=null)return Math.max(0,m.startWeight-m.goalWeight);
+function getGoalDiff(m){
+  // Positiv = abnehmen, Negativ = zunehmen
+  if(m.goalWeight!=null)return m.startWeight-m.goalWeight;
   if(m.goalLoss!=null)return m.goalLoss;
   return 0;
 }
@@ -386,8 +387,32 @@ function getGoalWeight(m){
   if(m.goalLoss!=null)return m.startWeight-m.goalLoss;
   return m.startWeight;
 }
-function getLost(m){const e=entriesArray(m);return e.length===0?0:m.startWeight-e[e.length-1].weight}
-function getProgress(m){const gl=getGoalLoss(m);return!gl?0:Math.min(100,Math.max(0,(getLost(m)/gl)*100))}
+function getCurrentDiff(m){
+  // Positiv = abgenommen, Negativ = zugenommen
+  const e=entriesArray(m);
+  return e.length===0?0:m.startWeight-e[e.length-1].weight;
+}
+function getProgress(m){
+  const goalDiff=getGoalDiff(m);
+  if(goalDiff===0)return 0;
+  const currentDiff=getCurrentDiff(m);
+  // Bei Zunahme-Ziel (goalDiff < 0): currentDiff ist auch negativ wenn zugenommen
+  return Math.min(100,Math.max(0,(currentDiff/goalDiff)*100));
+}
+function isGainGoal(m){
+  return getGoalDiff(m)<0;
+}
+function formatDiff(diff,m){
+  const isGain=isGainGoal(m);
+  const abs=Math.abs(diff).toFixed(1);
+  if(isGain){
+    // Zunahme-Ziel: positiver diff = verloren (schlecht), negativer diff = zugenommen (gut)
+    return diff<=0?`+${Math.abs(diff).toFixed(1)}`:`-${abs}`;
+  }else{
+    // Abnahme-Ziel: positiver diff = verloren (gut), negativer diff = zugenommen (schlecht)
+    return diff>=0?`-${abs}`:`+${Math.abs(diff).toFixed(1)}`;
+  }
+}
 function entriesArray(m){if(!m.entries)return[];return Object.entries(m.entries).map(([k,v])=>({key:k,...v})).sort((a,b)=>a.date.localeCompare(b.date))}
 function getRanking(){return membersArray().sort((a,b)=>getProgress(b)-getProgress(a))}
 function getDaysLeft(){return Math.max(0,Math.ceil((new Date(appData.deadline)-new Date())/864e5))}
@@ -433,13 +458,16 @@ function renderDashboard(){
   }
   const ranked=getRanking();
   let html=ranked.map((m,i)=>{
-    const gl=getGoalLoss(m),prog=getProgress(m),lost=getLost(m);
+    const goalDiff=Math.abs(getGoalDiff(m)),prog=getProgress(m),currentDiff=getCurrentDiff(m);
+    const isGain=isGainGoal(m);
     const color=prog>=100?"linear-gradient(90deg,#10b981,#34d399)":`linear-gradient(90deg,${COLORS[i%COLORS.length]},${COLORS[(i+1)%COLORS.length]})`;
-    const stats=isAdmin()?`${lost>=0?"-":"+"}${Math.abs(lost).toFixed(1)} / ${gl.toFixed(1)} kg`:`${prog.toFixed(0)}%`;
+    const diffText=formatDiff(currentDiff,m);
+    const goalText=isGain?`+${goalDiff.toFixed(1)}`:`-${goalDiff.toFixed(1)}`;
+    const stats=isAdmin()?`${diffText} / ${goalText} kg`:`${prog.toFixed(0)}%`;
     return`<div class="progress-row"><div class="progress-header"><span class="name">${medal(i)} ${m.name}</span><span class="stats">${stats}</span></div><div class="progress-track"><div class="progress-fill" style="width:${prog}%;background:${color}">${prog>15?`<span>${prog.toFixed(0)}%</span>`:""}</div>${prog<=15?`<span class="progress-label-outside">${prog.toFixed(0)}%</span>`:""}</div>${prog>=100?'<div class="goal-reached">🎉 Ziel erreicht!</div>':""}</div>`;
   }).join("");
 
-  let chart=(isAdmin()&&members.some(m=>entriesArray(m).length>1))?`<div class="card"><h3>📈 Gewichtsverlust über Zeit (kg)</h3><div class="chart-container"><canvas id="weightChartCanvas"></canvas></div></div>`:"";
+  let chart=(isAdmin()&&members.some(m=>entriesArray(m).length>1))?`<div class="card"><h3>📈 Gewichtsveränderung über Zeit (kg)</h3><div class="chart-container"><canvas id="weightChartCanvas"></canvas></div></div>`:"";
   el.innerHTML=`<div class="card"><h3>Fortschritt zum Ziel</h3>${html}</div>${chart}`;
   if(chart)renderChart();
 }
@@ -549,14 +577,16 @@ function renderRanking(){
   const admin=isAdmin();
   if(ranked.length===0){el.innerHTML=`<div class="card"><h3>🏆 Leaderboard</h3><p style="color:var(--muted)">Noch keine Teilnehmer.</p></div>`;return}
   el.innerHTML=`<div class="card"><h3>🏆 Leaderboard</h3>${ranked.map((m,i)=>{
-    const prog=getProgress(m),lost=getLost(m);
-    const lc=lost>=0?"var(--green)":"var(--red)";
+    const prog=getProgress(m),currentDiff=getCurrentDiff(m);
+    const isGain=isGainGoal(m);
+    const diffColor=(isGain?currentDiff<=0:currentDiff>=0)?"var(--green)":"var(--red)";
+    const diffText=formatDiff(currentDiff,m);
     let detail='';
     if(admin){
       const entries=entriesArray(m),latest=entries.length>0?entries[entries.length-1].weight:m.startWeight;
-      detail=`${m.startWeight} → ${latest} kg · <span style="color:${lc}">${lost>=0?"-":"+"}${Math.abs(lost).toFixed(1)} kg</span>`;
+      detail=`${m.startWeight} → ${latest} kg · <span style="color:${diffColor}">${diffText} kg</span>`;
     }else{
-      detail=`<span style="color:${lc}">${lost>=0?"-":"+"}${Math.abs(lost).toFixed(1)} kg abgenommen</span>`;
+      detail=`<span style="color:${diffColor}">${diffText} kg ${isGain?'zugenommen':'abgenommen'}</span>`;
     }
     return`<div class="rank-item ${i===0?"top":""}"><div class="rank-medal">${medal(i)}</div><div class="rank-info"><div class="rank-name">${m.name}</div><div class="rank-detail">${detail}</div></div><div class="rank-pct"><div class="pct" style="color:${COLORS[i%COLORS.length]}">${prog.toFixed(0)}%</div>${admin?`<div class="goal">Ziel: ${getGoalWeight(m)} kg</div>`:''}</div></div>`;
   }).join("")}</div>`;
@@ -583,13 +613,15 @@ function renderMembersAdmin(el){
         const pe=pendingMemberEdit||{name:m.name,startWeight:m.startWeight,goalWeight:getGoalWeight(m)};
         return`<div class="member-edit-row"><div class="row" style="margin-bottom:8px"><div class="field"><label>Name</label><input id="em-name" value="${pe.name}"></div><div class="field-sm"><label>Startgewicht (kg)</label><input type="number" step="0.1" id="em-start" value="${pe.startWeight}"></div><div class="field-sm"><label>Zielgewicht (kg)</label><input type="number" step="0.1" id="em-goal" value="${pe.goalWeight}"></div></div><div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn btn-sm" onclick="saveMemberEdit('${m.id}')">Speichern ✓</button><button class="btn btn-sm btn-secondary" onclick="cancelMemberEdit()">Abbrechen</button></div></div>`;
       }
-      const gl=getGoalLoss(m);
+      const goalDiff=getGoalDiff(m);
+      const isGain=isGainGoal(m);
+      const goalText=isGain?`+${Math.abs(goalDiff).toFixed(1)}`:`−${Math.abs(goalDiff).toFixed(1)}`;
       const linked=m.linkedUserId?'✓ Verknüpft':'⚠️ Nicht verknüpft';
       const linkedColor=m.linkedUserId?'var(--green)':'var(--yellow)';
-      return`<div class="member-row"><div><span style="font-weight:600;color:${COLORS[i%COLORS.length]}">${m.name}</span><span style="color:var(--dim);font-size:13px;margin-left:10px">Start: ${m.startWeight} kg · Ziel: ${getGoalWeight(m)} kg (−${gl.toFixed(1)} kg)</span><span style="color:${linkedColor};font-size:11px;margin-left:10px">${linked}</span></div><div style="display:flex;gap:6px"><button class="btn btn-secondary btn-sm" onclick="startMemberEdit('${m.id}')">✏️</button><button class="btn btn-secondary btn-sm" onclick="linkMember('${m.id}')">🔗</button><button class="btn btn-danger" onclick="removeMember('${m.id}')">Entfernen</button></div></div>`;
+      return`<div class="member-row"><div><span style="font-weight:600;color:${COLORS[i%COLORS.length]}">${m.name}</span><span style="color:var(--dim);font-size:13px;margin-left:10px">Start: ${m.startWeight} kg · Ziel: ${getGoalWeight(m)} kg (${goalText} kg)</span><span style="color:${linkedColor};font-size:11px;margin-left:10px">${linked}</span></div><div style="display:flex;gap:6px"><button class="btn btn-secondary btn-sm" onclick="startMemberEdit('${m.id}')">✏️</button><button class="btn btn-secondary btn-sm" onclick="linkMember('${m.id}')">🔗</button><button class="btn btn-danger" onclick="removeMember('${m.id}')">Entfernen</button></div></div>`;
     }).join("")}</div>`;
   }
-  el.innerHTML=`<div class="card"><h3>Teilnehmer hinzufügen</h3><div class="row"><div class="field"><label>Name</label><input id="m-name" placeholder="z.B. Anna"></div><div class="field-sm"><label>Startgewicht (kg)</label><input type="number" step="0.1" id="m-start" placeholder="z.B. 90"></div><div class="field-sm"><label>Zielgewicht (kg)</label><input type="number" step="0.1" id="m-goal" placeholder="z.B. 82"></div><button class="btn" onclick="addMember()" style="align-self:flex-end">Hinzufügen +</button></div><div class="link-info"><strong>💡 Tipp:</strong> Nach dem Hinzufügen kannst du mit dem 🔗-Button den Teilnehmer mit einem Benutzerkonto verknüpfen. Nur verknüpfte Benutzer können ihre eigenen Einträge sehen und bearbeiten.</div></div>${list}`;
+  el.innerHTML=`<div class="card"><h3>Teilnehmer hinzufügen</h3><div class="row"><div class="field"><label>Name</label><input id="m-name" placeholder="z.B. Anna"></div><div class="field-sm"><label>Startgewicht (kg)</label><input type="number" step="0.1" id="m-start" placeholder="z.B. 70"></div><div class="field-sm"><label>Zielgewicht (kg)</label><input type="number" step="0.1" id="m-goal" placeholder="z.B. 65 oder 75"></div><button class="btn" onclick="addMember()" style="align-self:flex-end">Hinzufügen +</button></div><div class="link-info"><strong>💡 Tipp:</strong> Zielgewicht niedriger = Abnehmen, Zielgewicht höher = Zunehmen. Nach dem Hinzufügen kannst du mit dem 🔗-Button den Teilnehmer mit einem Benutzerkonto verknüpfen.</div></div>${list}`;
 }
 
 function renderMembersUser(el,myMemberId){
@@ -598,8 +630,11 @@ function renderMembersUser(el,myMemberId){
     return;
   }
   const m={id:myMemberId,...appData.members[myMemberId]};
-  const gl=getGoalLoss(m),prog=getProgress(m),lost=getLost(m),entries=entriesArray(m);
+  const goalDiff=getGoalDiff(m),prog=getProgress(m),currentDiff=getCurrentDiff(m),entries=entriesArray(m);
   const latest=entries.length>0?entries[entries.length-1].weight:m.startWeight;
+  const isGain=isGainGoal(m);
+  const diffColor=(isGain?currentDiff<=0:currentDiff>=0)?"var(--green)":"var(--red)";
+  const diffText=formatDiff(currentDiff,m);
   
   if(editingMember===myMemberId){
     const pe=pendingMemberEdit||{startWeight:m.startWeight,goalWeight:getGoalWeight(m)};
@@ -608,6 +643,7 @@ function renderMembersUser(el,myMemberId){
         <div class="field-sm"><label>Startgewicht (kg)</label><input type="number" step="0.1" id="em-start" value="${pe.startWeight}"></div>
         <div class="field-sm"><label>Zielgewicht (kg)</label><input type="number" step="0.1" id="em-goal" value="${pe.goalWeight}"></div>
       </div>
+      <p style="color:var(--dim);font-size:12px;margin-bottom:16px">💡 Zielgewicht niedriger als Start = Abnehmen, höher = Zunehmen</p>
       <div style="display:flex;gap:8px">
         <button class="btn" onclick="saveMyProfile('${myMemberId}')">Speichern ✓</button>
         <button class="btn btn-secondary" onclick="cancelMemberEdit()">Abbrechen</button>
@@ -631,8 +667,8 @@ function renderMembersUser(el,myMemberId){
         <div style="font-size:12px;color:var(--dim)">Zielgewicht (kg)</div>
       </div>
       <div style="background:var(--dark-overlay);padding:16px;border-radius:12px;text-align:center">
-        <div style="font-size:24px;font-weight:800;color:${lost>=0?'var(--green)':'var(--red)'}">${lost>=0?'-':'+'} ${Math.abs(lost).toFixed(1)}</div>
-        <div style="font-size:12px;color:var(--dim)">Verlust (kg)</div>
+        <div style="font-size:24px;font-weight:800;color:${diffColor}">${diffText}</div>
+        <div style="font-size:12px;color:var(--dim)">${isGain?'Zunahme':'Abnahme'} (kg)</div>
       </div>
     </div>
     <div class="progress-row">
@@ -788,7 +824,7 @@ function resetAll(){
   if(!confirm("WIRKLICH alle Daten löschen?"))return;
   if(!confirm("Bist du GANZ sicher?"))return;
   const admins={};admins[currentUser.uid]=true;
-  db.ref("challenge").set({challengeName:"Abnehm-Challenge 2026",deadline:"2026-07-31",inviteCode:appData.inviteCode||DEFAULT_INVITE_CODE,members:{},admins});
+  db.ref("challenge").set({challengeName:"Gewichts-Challenge 2026",deadline:"2026-07-31",inviteCode:appData.inviteCode||DEFAULT_INVITE_CODE,members:{},admins});
 }
 
 init();
