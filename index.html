@@ -319,7 +319,7 @@ async function handleReset(){
 function handleLogout(){auth.signOut()}
 
 function startApp(){
-  show("appScreen");
+  show("loadingScreen");
   document.getElementById("userEmail").textContent=currentUser.email;
   dataLoaded={admins:false,members:false};
   currentTab=null;
@@ -349,9 +349,15 @@ function startApp(){
 }
 
 function initUI(){
+  // Warte bis beide Daten geladen sind
+  if(!dataLoaded.admins||!dataLoaded.members)return;
+  
+  // Setze Standard-Tab nur beim ersten Laden
   if(currentTab===null){
     currentTab=isAdmin()?"dashboard":"members";
   }
+  
+  show("appScreen");
   renderTabs();
   renderAll();
 }
