@@ -320,13 +320,26 @@ function handleLogout(){auth.signOut()}
 function startApp(){
   show("appScreen");
   document.getElementById("userEmail").textContent=currentUser.email;
-  db.ref("challenge").on("value",snap=>{
-    if(snap.val()){
-      appData={...appData,...snap.val()};
-      if(!appData.members)appData.members={};
-      if(!appData.admins)appData.admins={};
-      if(!appData.inviteCode)appData.inviteCode=DEFAULT_INVITE_CODE;
-    }
+  
+  // Lade Daten einzeln, da Firebase Rules pro Pfad gelten
+  db.ref("challenge/challengeName").on("value",snap=>{
+    appData.challengeName=snap.val()||"Abnehm-Challenge 2026";
+    renderAll();
+  });
+  db.ref("challenge/deadline").on("value",snap=>{
+    appData.deadline=snap.val()||"2026-07-31";
+    renderAll();
+  });
+  db.ref("challenge/inviteCode").on("value",snap=>{
+    appData.inviteCode=snap.val()||DEFAULT_INVITE_CODE;
+  });
+  db.ref("challenge/admins").on("value",snap=>{
+    appData.admins=snap.val()||{};
+    renderTabs();
+    renderAll();
+  });
+  db.ref("challenge/members").on("value",snap=>{
+    appData.members=snap.val()||{};
     renderTabs();
     renderAll();
   });
