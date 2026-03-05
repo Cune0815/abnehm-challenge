@@ -1,1 +1,1 @@
-# abnehm-challenge
+# Gewichts-Challenge
