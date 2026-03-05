@@ -280,8 +280,13 @@ async function handleAuth(){
 
   if(isRegisterMode){
     const code=document.getElementById("inviteCode").value.trim();
-    const snap=await db.ref("challenge/inviteCode").once("value");
-    const validCode=snap.val()||DEFAULT_INVITE_CODE;
+    let validCode=DEFAULT_INVITE_CODE;
+    try{
+      const snap=await db.ref("challenge/inviteCode").once("value");
+      if(snap.val())validCode=snap.val();
+    }catch(e){
+      console.log("Could not fetch invite code, using default");
+    }
     if(code!==validCode){
       errEl.textContent="Ungültiger Einladungscode.";
       return;
