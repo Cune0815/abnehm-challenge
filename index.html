@@ -27,10 +27,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .card h3{font-size:16px;margin-bottom:16px}
 input,select{background:var(--input-bg);border:1px solid var(--input-border);border-radius:10px;padding:12px 14px;color:var(--text);font-size:16px;outline:none;width:100%;transition:background .3s}
 label{font-size:12px;color:var(--muted);display:block;margin-bottom:4px}
-.btn{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;border:none;border-radius:10px;padding:12px 24px;cursor:pointer;font-weight:600;font-size:14px;transition:opacity .2s,transform .1s;min-height:44px}
+.btn{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;border:none;border-radius:10px;padding:12px 24px;cursor:pointer;font-weight:600;font-size:14px;transition:opacity .2s,transform .1s;min-height:44px;-webkit-tap-highlight-color:transparent;touch-action:manipulation;user-select:none}
 .btn:hover{opacity:.9}
-.btn:active{transform:scale(0.98)}
-.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn:active{transform:scale(0.98);opacity:.8}
+.btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
 .btn-danger{background:linear-gradient(135deg,var(--red),var(--pink));padding:8px 14px;font-size:12px}
 .btn-secondary{background:#475569}
 .btn-sm{padding:8px 12px;font-size:12px;border-radius:8px}
@@ -47,7 +47,7 @@ label{font-size:12px;color:var(--muted);display:block;margin-bottom:4px}
 .admin-badge{background:linear-gradient(135deg,var(--yellow),var(--pink));color:#fff;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700}
 .theme-toggle{background:var(--dark-overlay);border:1px solid var(--border);border-radius:8px;padding:6px 10px;cursor:pointer;font-size:16px}
 .tabs{display:flex;border-bottom:1px solid var(--border);margin-bottom:20px;overflow-x:auto}
-.tab{padding:12px 20px;border:none;border-bottom:3px solid transparent;background:transparent;color:var(--muted);cursor:pointer;font-weight:400;font-size:14px;transition:all .2s;white-space:nowrap;min-height:44px}
+.tab{padding:12px 20px;border:none;border-bottom:3px solid transparent;background:transparent;color:var(--muted);cursor:pointer;font-weight:400;font-size:14px;transition:all .2s;white-space:nowrap;min-height:44px;-webkit-tap-highlight-color:transparent;touch-action:manipulation;user-select:none}
 .tab.active{color:var(--text);font-weight:700;border-bottom-color:var(--accent)}
 .progress-row{margin-bottom:16px}
 .progress-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
@@ -71,7 +71,7 @@ label{font-size:12px;color:var(--muted);display:block;margin-bottom:4px}
 @keyframes slideIn{from{opacity:0;transform:translateX(-20px)}to{opacity:1;transform:translateX(0)}}
 .entry-row{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:var(--dark-overlay);border-radius:8px;margin-bottom:6px;font-size:13px;min-height:44px}
 .entry-actions{display:flex;gap:8px;align-items:center}
-.entry-row .del-btn,.entry-row .edit-btn{background:none;border:none;cursor:pointer;font-size:18px;padding:6px;min-width:36px;min-height:36px;border-radius:8px}
+.entry-row .del-btn,.entry-row .edit-btn{background:none;border:none;cursor:pointer;font-size:18px;padding:6px;min-width:36px;min-height:36px;border-radius:8px;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
 .entry-row .del-btn{color:var(--red)}
 .entry-row .edit-btn{color:var(--accent)}
 .edit-inline{display:flex;gap:8px;align-items:center;padding:10px 14px;background:rgba(99,102,241,0.1);border:1px solid var(--input-border);border-radius:8px;margin-bottom:6px;flex-wrap:wrap}
@@ -100,8 +100,8 @@ label{font-size:12px;color:var(--muted);display:block;margin-bottom:4px}
 .badge-card-name{font-size:12px;font-weight:600;margin-bottom:2px}
 .badge-card-desc{font-size:10px;color:var(--dim)}
 .badge-mini{font-size:14px;cursor:help}
-.badge-popup-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(15,23,42,0.9);display:none;align-items:center;justify-content:center;z-index:1001}
-.badge-popup-overlay.show{display:flex}
+.badge-popup-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(15,23,42,0.9);display:none;align-items:center;justify-content:center;z-index:1001;pointer-events:none}
+.badge-popup-overlay.show{display:flex;pointer-events:auto}
 .badge-popup{background:var(--card);border:2px solid var(--accent);border-radius:24px;padding:40px;text-align:center;max-width:320px}
 .badge-popup-icon{font-size:64px;margin-bottom:16px;animation:badgeBounce .5s ease}
 .badge-popup-title{font-size:14px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px}
@@ -109,11 +109,12 @@ label{font-size:12px;color:var(--muted);display:block;margin-bottom:4px}
 .badge-popup-desc{color:var(--muted);font-size:14px;margin-bottom:24px}
 @keyframes badgeBounce{0%{transform:scale(0)}50%{transform:scale(1.2)}100%{transform:scale(1)}}
 .confetti{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:1000;overflow:hidden}
-.confetti-piece{position:absolute;width:10px;height:10px;animation:confetti-fall 3s ease-out forwards}
+.confetti-piece{position:absolute;width:10px;height:10px;animation:confetti-fall 3s ease-out forwards;pointer-events:none}
 @keyframes confetti-fall{0%{transform:translateY(-100px) rotate(0deg);opacity:1}100%{transform:translateY(100vh) rotate(720deg);opacity:0}}
-.pull-indicator{position:fixed;top:0;left:50%;transform:translateX(-50%);background:var(--accent);color:#fff;padding:8px 16px;border-radius:0 0 10px 10px;font-size:12px;font-weight:600;opacity:0;transition:opacity .2s;z-index:100}
+.pull-indicator{position:fixed;top:0;left:50%;transform:translateX(-50%);background:var(--accent);color:#fff;padding:8px 16px;border-radius:0 0 10px 10px;font-size:12px;font-weight:600;opacity:0;transition:opacity .2s;z-index:100;pointer-events:none}
 .pull-indicator.show{opacity:1}
-.auth-loading-overlay{position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(15,23,42,0.8);border-radius:20px;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:10}
+.auth-loading-overlay{position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(15,23,42,0.8);border-radius:20px;display:none;flex-direction:column;align-items:center;justify-content:center;z-index:10}
+.auth-loading-overlay.show{display:flex}
 .auth-loading-overlay .spinner{width:32px;height:32px;border-width:3px}
 .auth-loading-overlay p{margin-top:12px;color:var(--muted);font-size:14px}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -123,7 +124,7 @@ label{font-size:12px;color:var(--muted);display:block;margin-bottom:4px}
 <body>
 <div id="loginScreen" class="auth-screen hidden">
   <div class="auth-box">
-    <div id="authLoadingOverlay" class="auth-loading-overlay hidden">
+    <div id="authLoadingOverlay" class="auth-loading-overlay">
       <div class="spinner"></div>
       <p>Wird angemeldet...</p>
     </div>
@@ -437,7 +438,10 @@ function showLogin(){
   isRegisterMode=false;
   document.getElementById("authBtn").textContent="Einloggen";
   document.getElementById("authBtn").disabled=false;
-  document.getElementById("authLoadingOverlay").classList.add("hidden");
+  document.getElementById("authLoadingOverlay").classList.remove("show");
+  document.getElementById("authError").textContent="";
+  document.getElementById("inviteCodeWrap").style.display="none";
+  document.getElementById("passwordHint").style.display="none";
   show("loginScreen");
 }
 
@@ -462,14 +466,14 @@ async function handleAuth(){
   }
 
   btn.disabled=true;
-  overlay.classList.remove("hidden");
+  overlay.classList.add("show");
   try{
     if(isRegisterMode)await auth.createUserWithEmailAndPassword(email,pw);
     else await auth.signInWithEmailAndPassword(email,pw);
   }catch(e){
     errEl.textContent=translateError(e.code);
     btn.disabled=false;
-    overlay.classList.add("hidden");
+    overlay.classList.remove("show");
   }
 }
 
