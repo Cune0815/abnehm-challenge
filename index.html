@@ -139,8 +139,8 @@
   .badge-name{font-weight:600;color:var(--text)}
   .badge-mini{font-size:14px;cursor:help}
 
-  .badge-popup-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(15,23,42,0.9);display:flex;align-items:center;justify-content:center;z-index:1001;opacity:0;transition:opacity .3s}
-  .badge-popup-overlay.show{opacity:1}
+  .badge-popup-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(15,23,42,0.9);display:none;align-items:center;justify-content:center;z-index:1001;opacity:0;transition:opacity .3s}
+  .badge-popup-overlay.show{display:flex;opacity:1}
   .badge-popup{background:var(--card);border:2px solid var(--accent);border-radius:24px;padding:40px;text-align:center;max-width:320px;transform:scale(0.8);transition:transform .3s}
   .badge-popup-overlay.show .badge-popup{transform:scale(1)}
   .badge-popup-icon{font-size:64px;margin-bottom:16px;animation:badgeBounce .5s ease}
