@@ -127,6 +127,38 @@
   .link-info{background:rgba(99,102,241,0.1);border:1px solid var(--input-border);border-radius:10px;padding:12px;margin-top:12px;font-size:13px;color:var(--muted)}
   .link-info strong{color:var(--text)}
 
+  .quote-card{background:linear-gradient(135deg,rgba(99,102,241,0.15),rgba(236,72,153,0.15));border:1px solid rgba(99,102,241,0.3);border-radius:16px;padding:20px 24px;margin-bottom:20px;text-align:center}
+  .quote-text{font-size:16px;font-style:italic;color:var(--text);line-height:1.5;margin-bottom:8px}
+  .quote-author{font-size:13px;color:var(--muted)}
+
+  .badges-container{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+  .badge{display:flex;align-items:center;gap:6px;background:var(--dark-overlay);border:1px solid var(--border);border-radius:20px;padding:6px 12px;font-size:12px;transition:all .2s}
+  .badge.unlocked{background:linear-gradient(135deg,rgba(99,102,241,0.2),rgba(236,72,153,0.2));border-color:rgba(99,102,241,0.4)}
+  .badge.locked{opacity:0.4;filter:grayscale(1)}
+  .badge-icon{font-size:16px}
+  .badge-name{font-weight:600;color:var(--text)}
+  .badge-mini{font-size:14px;cursor:help}
+
+  .badge-popup-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(15,23,42,0.9);display:flex;align-items:center;justify-content:center;z-index:1001;opacity:0;transition:opacity .3s}
+  .badge-popup-overlay.show{opacity:1}
+  .badge-popup{background:var(--card);border:2px solid var(--accent);border-radius:24px;padding:40px;text-align:center;max-width:320px;transform:scale(0.8);transition:transform .3s}
+  .badge-popup-overlay.show .badge-popup{transform:scale(1)}
+  .badge-popup-icon{font-size:64px;margin-bottom:16px;animation:badgeBounce .5s ease}
+  .badge-popup-title{font-size:14px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px}
+  .badge-popup-name{font-size:24px;font-weight:800;background:linear-gradient(135deg,var(--accent),var(--pink));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:12px}
+  .badge-popup-desc{color:var(--muted);font-size:14px;margin-bottom:24px}
+  @keyframes badgeBounce{0%{transform:scale(0)}50%{transform:scale(1.2)}100%{transform:scale(1)}}
+
+  .badges-section{margin-top:20px;padding-top:20px;border-top:1px solid var(--border)}
+  .badges-section h4{font-size:14px;color:var(--muted);margin-bottom:12px}
+  .badges-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
+  .badge-card{background:var(--dark-overlay);border:1px solid var(--border);border-radius:12px;padding:12px;text-align:center;transition:all .2s}
+  .badge-card.unlocked{background:linear-gradient(135deg,rgba(99,102,241,0.1),rgba(236,72,153,0.1));border-color:rgba(99,102,241,0.3)}
+  .badge-card.locked{opacity:0.35;filter:grayscale(1)}
+  .badge-card-icon{font-size:28px;margin-bottom:6px}
+  .badge-card-name{font-size:12px;font-weight:600;color:var(--text);margin-bottom:2px}
+  .badge-card-desc{font-size:10px;color:var(--dim)}
+
   .confetti{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:1000;overflow:hidden}
   .confetti-piece{position:absolute;width:10px;height:10px;animation:confetti-fall 3s ease-out forwards}
   @keyframes confetti-fall{0%{transform:translateY(-100px) rotate(0deg);opacity:1}100%{transform:translateY(100vh) rotate(720deg);opacity:0}}
@@ -232,6 +264,15 @@
 </div>
 
 <div id="confettiContainer" class="confetti"></div>
+<div id="badgePopupOverlay" class="badge-popup-overlay" onclick="closeBadgePopup()">
+  <div class="badge-popup" onclick="event.stopPropagation()">
+    <div class="badge-popup-icon" id="badgePopupIcon">🏆</div>
+    <div class="badge-popup-title">Neuer Badge!</div>
+    <div class="badge-popup-name" id="badgePopupName">Badge Name</div>
+    <div class="badge-popup-desc" id="badgePopupDesc">Beschreibung</div>
+    <button class="btn" onclick="closeBadgePopup()">Weiter so! 💪</button>
+  </div>
+</div>
 
 <div id="toast" class="toast"></div>
 
@@ -252,6 +293,75 @@ const FIREBASE_CONFIG = {
 
 const DEFAULT_INVITE_CODE = "challenge2026";
 const COLORS=["#6366f1","#f43f5e","#10b981","#f59e0b","#3b82f6","#ec4899","#14b8a6","#8b5cf6","#ef4444","#06b6d4","#84cc16","#e879f9","#fb923c","#22d3ee","#a3e635"];
+
+const QUOTES = [
+  { text: "Der beste Zeitpunkt anzufangen war gestern. Der zweitbeste ist jetzt.", author: "Konfuzius" },
+  { text: "Jede Reise beginnt mit einem ersten Schritt.", author: "Laozi" },
+  { text: "Es ist nie zu spät, das zu werden, was du hättest sein können.", author: "George Eliot" },
+  { text: "Der einzige Weg, großartige Arbeit zu leisten, ist zu lieben, was du tust.", author: "Steve Jobs" },
+  { text: "Erfolg ist die Summe kleiner Anstrengungen, die Tag für Tag wiederholt werden.", author: "Robert Collier" },
+  { text: "Du musst nicht großartig sein, um anzufangen. Aber du musst anfangen, um großartig zu werden.", author: "Zig Ziglar" },
+  { text: "Die größte Entdeckung meiner Generation ist, dass Menschen ihr Leben ändern können, indem sie ihre Einstellung ändern.", author: "William James" },
+  { text: "Glaube an dich selbst und alles ist möglich.", author: "Unbekannt" },
+  { text: "Disziplin ist die Brücke zwischen Zielen und Erfolg.", author: "Jim Rohn" },
+  { text: "Der Schmerz, den du heute fühlst, ist die Stärke, die du morgen spürst.", author: "Unbekannt" },
+  { text: "Kleine Schritte führen zu großen Veränderungen.", author: "Unbekannt" },
+  { text: "Aufgeben ist keine Option.", author: "Unbekannt" },
+  { text: "Dein Körper kann fast alles. Es ist dein Geist, den du überzeugen musst.", author: "Unbekannt" },
+  { text: "Fortschritt, nicht Perfektion.", author: "Unbekannt" },
+  { text: "Die beste Investition ist in deine eigene Gesundheit.", author: "Unbekannt" },
+  { text: "Jeder Tag ist eine neue Chance, dich zu verbessern.", author: "Unbekannt" },
+  { text: "Motivation bringt dich in Gang. Gewohnheit bringt dich voran.", author: "Jim Ryun" },
+  { text: "Du bist stärker als du denkst.", author: "Unbekannt" },
+  { text: "Erfolg ist nicht final, Scheitern ist nicht fatal: Es ist der Mut weiterzumachen, der zählt.", author: "Winston Churchill" },
+  { text: "Die einzige schlechte Übung ist die, die nicht stattfindet.", author: "Unbekannt" },
+  { text: "Träume groß, starte klein, fang jetzt an.", author: "Unbekannt" },
+  { text: "Veränderung passiert nicht über Nacht, aber sie passiert.", author: "Unbekannt" },
+  { text: "Sei stolz auf jeden Schritt, den du machst.", author: "Unbekannt" },
+  { text: "Der Weg ist das Ziel.", author: "Konfuzius" },
+  { text: "Was du heute tust, entscheidet, wer du morgen bist.", author: "Unbekannt" },
+  { text: "Stärke kommt nicht aus körperlicher Kraft. Sie kommt aus einem unbeugsamen Willen.", author: "Mahatma Gandhi" },
+  { text: "Ein Jahr von jetzt wirst du dir wünschen, du hättest heute angefangen.", author: "Karen Lamb" },
+  { text: "Selbst der längste Marsch beginnt mit dem ersten Schritt.", author: "Chinesisches Sprichwort" },
+  { text: "Gib niemals auf. Große Dinge brauchen Zeit.", author: "Unbekannt" },
+  { text: "Du bist dein einziges Limit.", author: "Unbekannt" },
+  { text: "Gesundheit ist nicht alles, aber ohne Gesundheit ist alles nichts.", author: "Arthur Schopenhauer" }
+];
+
+const BADGES = {
+  // Einstieg
+  firstCheckin: { icon: "👶", name: "Erste Schritte", desc: "Erster Check-in eingetragen", category: "start" },
+  profileComplete: { icon: "✅", name: "Profil komplett", desc: "Start- und Zielgewicht gesetzt", category: "start" },
+  // Zeit & Konsistenz
+  week1: { icon: "📅", name: "Woche 1", desc: "Eine Woche dabei", category: "time" },
+  month1: { icon: "📆", name: "Monat 1", desc: "Ein Monat geschafft", category: "time" },
+  streak4: { icon: "💪", name: "Durchhalter", desc: "4 Wochen Streak", category: "time" },
+  streak8: { icon: "🔥", name: "Eiserner Wille", desc: "8 Wochen Streak", category: "time" },
+  streak12: { icon: "⚡", name: "Unaufhaltsam", desc: "12 Wochen Streak", category: "time" },
+  // Einträge
+  entries10: { icon: "📝", name: "Gewohnheit", desc: "10 Check-ins eingetragen", category: "entries" },
+  entries25: { icon: "📊", name: "Datensammler", desc: "25 Check-ins eingetragen", category: "entries" },
+  entries50: { icon: "⭐", name: "Veteran", desc: "Über 50 Einträge", category: "entries" },
+  // Fortschritt
+  progress10: { icon: "🌱", name: "Guter Start", desc: "10% des Ziels erreicht", category: "progress" },
+  progress25: { icon: "🚢", name: "Auf Kurs", desc: "25% des Ziels erreicht", category: "progress" },
+  progress50: { icon: "🎯", name: "Halbzeit", desc: "50% des Ziels erreicht", category: "progress" },
+  progress75: { icon: "🏃", name: "Zielgerade", desc: "75% des Ziels erreicht", category: "progress" },
+  progress90: { icon: "😤", name: "Fast da", desc: "90% des Ziels erreicht", category: "progress" },
+  progress100: { icon: "🏆", name: "Ziel erreicht", desc: "Du hast es geschafft!", category: "progress" },
+  progress110: { icon: "🚀", name: "Überflieger", desc: "Über das Ziel hinaus", category: "progress" },
+  // Ranking
+  top3: { icon: "🥉", name: "Top 3", desc: "Auf dem Treppchen", category: "ranking" },
+  champion: { icon: "👑", name: "Champion", desc: "Platz 1 mit ≥50%", category: "ranking" },
+  // Spezial
+  earlyBird: { icon: "🌅", name: "Früher Vogel", desc: "Check-in vor 7 Uhr", category: "special" },
+  nightOwl: { icon: "🦉", name: "Nachteule", desc: "Check-in nach 23 Uhr", category: "special" },
+  weekendWarrior: { icon: "🗓️", name: "Wochenend-Krieger", desc: "4 Wochenend-Check-ins", category: "special" },
+  newYear: { icon: "🎆", name: "Neujahrs-Vorsatz", desc: "Check-in am 1. Januar", category: "special" },
+  founder: { icon: "🏛️", name: "Gründer", desc: "Einer der ersten 3 Teilnehmer", category: "special" }
+};
+
+let pendingBadges = [];
 
 let db=null,auth=null,currentUser=null;
 let appData={challengeName:"Gewichts-Challenge 2026",deadline:"2026-07-31",inviteCode:DEFAULT_INVITE_CODE,members:{},admins:{}};
@@ -299,6 +409,228 @@ function triggerConfetti(){
     container.appendChild(piece);
   }
   setTimeout(()=>container.innerHTML='',4000);
+}
+
+function getDailyQuote(){
+  const now=new Date();
+  const start=new Date(now.getFullYear(),0,0);
+  const diff=now-start;
+  const dayOfYear=Math.floor(diff/86400000);
+  return QUOTES[dayOfYear%QUOTES.length];
+}
+
+function showBadgePopup(badgeKey){
+  const badge=BADGES[badgeKey];
+  if(!badge)return;
+  document.getElementById('badgePopupIcon').textContent=badge.icon;
+  document.getElementById('badgePopupName').textContent=badge.name;
+  document.getElementById('badgePopupDesc').textContent=badge.desc;
+  document.getElementById('badgePopupOverlay').classList.add('show');
+  triggerConfetti();
+}
+
+function closeBadgePopup(){
+  document.getElementById('badgePopupOverlay').classList.remove('show');
+  if(pendingBadges.length>0){
+    setTimeout(()=>showBadgePopup(pendingBadges.shift()),300);
+  }
+}
+
+function awardBadge(memberId,badgeKey){
+  const now=new Date().toISOString();
+  db.ref(`challenge/members/${memberId}/badges/${badgeKey}`).set(now);
+}
+
+function checkBadges(member,showPopups=true){
+  if(!member||!member.id)return;
+  const dominated=[];
+  const entries=entriesArray(member);
+  const progress=getProgress(member);
+  const streak=getStreak(member);
+  const badges=member.badges||{};
+  const now=new Date();
+  const hour=now.getHours();
+  const isWeekend=now.getDay()===0||now.getDay()===6;
+  
+  // Erste Schritte
+  if(entries.length>=1&&!badges.firstCheckin){
+    awardBadge(member.id,'firstCheckin');
+    dominated.push('firstCheckin');
+  }
+  
+  // Profil komplett
+  if(member.startWeight&&member.goalWeight&&!badges.profileComplete){
+    awardBadge(member.id,'profileComplete');
+    dominated.push('profileComplete');
+  }
+  
+  // Zeit-basierte Badges
+  if(entries.length>=1){
+    const firstEntry=new Date(entries[0].date);
+    const daysSinceFirst=Math.floor((now-firstEntry)/86400000);
+    
+    if(daysSinceFirst>=7&&!badges.week1){
+      awardBadge(member.id,'week1');
+      dominated.push('week1');
+    }
+    if(daysSinceFirst>=30&&!badges.month1){
+      awardBadge(member.id,'month1');
+      dominated.push('month1');
+    }
+  }
+  
+  // Streak Badges
+  if(streak>=4&&!badges.streak4){
+    awardBadge(member.id,'streak4');
+    dominated.push('streak4');
+  }
+  if(streak>=8&&!badges.streak8){
+    awardBadge(member.id,'streak8');
+    dominated.push('streak8');
+  }
+  if(streak>=12&&!badges.streak12){
+    awardBadge(member.id,'streak12');
+    dominated.push('streak12');
+  }
+  
+  // Einträge Badges
+  if(entries.length>=10&&!badges.entries10){
+    awardBadge(member.id,'entries10');
+    dominated.push('entries10');
+  }
+  if(entries.length>=25&&!badges.entries25){
+    awardBadge(member.id,'entries25');
+    dominated.push('entries25');
+  }
+  if(entries.length>=50&&!badges.entries50){
+    awardBadge(member.id,'entries50');
+    dominated.push('entries50');
+  }
+  
+  // Fortschritt Badges
+  if(progress>=10&&!badges.progress10){
+    awardBadge(member.id,'progress10');
+    dominated.push('progress10');
+  }
+  if(progress>=25&&!badges.progress25){
+    awardBadge(member.id,'progress25');
+    dominated.push('progress25');
+  }
+  if(progress>=50&&!badges.progress50){
+    awardBadge(member.id,'progress50');
+    dominated.push('progress50');
+  }
+  if(progress>=75&&!badges.progress75){
+    awardBadge(member.id,'progress75');
+    dominated.push('progress75');
+  }
+  if(progress>=90&&!badges.progress90){
+    awardBadge(member.id,'progress90');
+    dominated.push('progress90');
+  }
+  if(progress>=100&&!badges.progress100){
+    awardBadge(member.id,'progress100');
+    dominated.push('progress100');
+  }
+  if(progress>=110&&!badges.progress110){
+    awardBadge(member.id,'progress110');
+    dominated.push('progress110');
+  }
+  
+  // Ranking Badges
+  const ranked=getRanking();
+  const rankIndex=ranked.findIndex(m=>m.id===member.id);
+  if(rankIndex>=0&&rankIndex<3&&!badges.top3){
+    awardBadge(member.id,'top3');
+    dominated.push('top3');
+  }
+  if(rankIndex===0&&progress>=50&&!badges.champion){
+    awardBadge(member.id,'champion');
+    dominated.push('champion');
+  }
+  
+  // Spezial Badges
+  if(hour<7&&!badges.earlyBird){
+    awardBadge(member.id,'earlyBird');
+    dominated.push('earlyBird');
+  }
+  if(hour>=23&&!badges.nightOwl){
+    awardBadge(member.id,'nightOwl');
+    dominated.push('nightOwl');
+  }
+  
+  // Wochenend-Krieger
+  const weekendEntries=entries.filter(e=>{
+    const d=new Date(e.date);
+    return d.getDay()===0||d.getDay()===6;
+  });
+  if(weekendEntries.length>=4&&!badges.weekendWarrior){
+    awardBadge(member.id,'weekendWarrior');
+    dominated.push('weekendWarrior');
+  }
+  
+  // Neujahr
+  const hasNewYearEntry=entries.some(e=>e.date.endsWith('-01-01'));
+  if(hasNewYearEntry&&!badges.newYear){
+    awardBadge(member.id,'newYear');
+    dominated.push('newYear');
+  }
+  
+  // Gründer (einer der ersten 3)
+  const allMembers=membersArray();
+  if(allMembers.length<=3&&!badges.founder){
+    awardBadge(member.id,'founder');
+    dominated.push('founder');
+  }
+  
+  // Show popups for new badges
+  if(showPopups&&dominated.length>0){
+    pendingBadges=dominated.slice(1);
+    setTimeout(()=>showBadgePopup(dominated[0]),500);
+  }
+  
+  return dominated;
+}
+
+function getBadgeCount(member){
+  if(!member.badges)return 0;
+  return Object.keys(member.badges).length;
+}
+
+function renderBadgesPreview(member){
+  const badges=member.badges||{};
+  const unlockedKeys=Object.keys(badges).slice(0,5);
+  if(unlockedKeys.length===0)return'';
+  return unlockedKeys.map(k=>BADGES[k]?`<span class="badge-mini" title="${BADGES[k].name}">${BADGES[k].icon}</span>`:'').join('');
+}
+
+function renderBadgesSection(member){
+  const badges=member.badges||{};
+  const categories=[
+    {key:'start',name:'Einstieg'},
+    {key:'time',name:'Zeit & Konsistenz'},
+    {key:'entries',name:'Aktivität'},
+    {key:'progress',name:'Fortschritt'},
+    {key:'ranking',name:'Ranking'},
+    {key:'special',name:'Spezial'}
+  ];
+  
+  let html='<div class="badges-section"><h4>🏅 Badges ('+Object.keys(badges).length+'/'+Object.keys(BADGES).length+')</h4>';
+  
+  categories.forEach(cat=>{
+    const categoryBadges=Object.entries(BADGES).filter(([k,b])=>b.category===cat.key);
+    if(categoryBadges.length===0)return;
+    
+    html+=`<div style="margin-bottom:16px"><div style="font-size:11px;color:var(--dim);margin-bottom:8px;text-transform:uppercase">${cat.name}</div><div class="badges-grid">`;
+    categoryBadges.forEach(([key,badge])=>{
+      const unlocked=!!badges[key];
+      html+=`<div class="badge-card ${unlocked?'unlocked':'locked'}"><div class="badge-card-icon">${badge.icon}</div><div class="badge-card-name">${badge.name}</div><div class="badge-card-desc">${badge.desc}</div></div>`;
+    });
+    html+='</div></div>';
+  });
+  
+  html+='</div>';
+  return html;
 }
 
 function initPullToRefresh(){
@@ -427,10 +759,12 @@ function showLogin(){
   isRegisterMode=false;
   document.getElementById("authSubtitle").textContent="Melde dich an, um loszulegen.";
   document.getElementById("authBtn").textContent="Einloggen";
+  document.getElementById("authBtn").disabled=false;
   document.getElementById("authSwitch").textContent="Noch kein Konto? Registrieren";
   document.getElementById("passwordHint").style.display="none";
   document.getElementById("inviteCodeWrap").style.display="none";
   document.getElementById("authError").textContent="";
+  document.getElementById("authLoadingOverlay").classList.add("hidden");
   show("loginScreen");
 }
 
@@ -538,8 +872,15 @@ function initUI(){
   }
   
   show("appScreen");
+  initPullToRefresh();
   renderTabs();
   renderAll();
+  
+  // Check if #1 has 100% for confetti
+  const ranked=getRanking();
+  if(ranked.length>0&&getProgress(ranked[0])>=100){
+    setTimeout(triggerConfetti,500);
+  }
 }
 
 function renderTabs(){
@@ -636,6 +977,11 @@ function renderDashboard(){
     el.innerHTML=`<div class="card empty"><div class="icon">🚀</div><h2>Starte deine Challenge!</h2><p style="color:var(--muted)">${isAdmin()?'Füge Teilnehmer unter "Teilnehmer" hinzu.':'Warte bis der Admin Teilnehmer hinzufügt.'}</p>${isAdmin()?`<button class="btn" style="margin-top:16px" onclick="switchTab('members',document.querySelectorAll('.tab')[3])">Teilnehmer hinzufügen →</button>`:''}</div>`;
     return;
   }
+  
+  // Daily Quote
+  const quote=getDailyQuote();
+  let quoteHtml=`<div class="quote-card"><div class="quote-text">"${quote.text}"</div><div class="quote-author">— ${quote.author}</div></div>`;
+  
   const ranked=getRanking();
   let html=ranked.map((m,i)=>{
     const goalDiff=Math.abs(getGoalDiff(m)),prog=getProgress(m),currentDiff=getCurrentDiff(m);
@@ -644,11 +990,12 @@ function renderDashboard(){
     const diffText=formatDiff(currentDiff,m);
     const goalText=isGain?`+${goalDiff.toFixed(1)}`:`-${goalDiff.toFixed(1)}`;
     const stats=isAdmin()?`${diffText} / ${goalText} kg`:`${prog.toFixed(0)}%`;
-    return`<div class="progress-row"><div class="progress-header"><span class="name">${medal(i)} ${m.name}</span><span class="stats">${stats}</span></div><div class="progress-track"><div class="progress-fill" style="width:${prog}%;background:${color}">${prog>15?`<span>${prog.toFixed(0)}%</span>`:""}</div>${prog<=15?`<span class="progress-label-outside">${prog.toFixed(0)}%</span>`:""}</div>${prog>=100?'<div class="goal-reached">🎉 Ziel erreicht!</div>':""}</div>`;
+    const badgePreview=renderBadgesPreview(m);
+    return`<div class="progress-row"><div class="progress-header"><span class="name">${medal(i)} ${m.name} ${badgePreview}</span><span class="stats">${stats}</span></div><div class="progress-track"><div class="progress-fill" style="width:${prog}%;background:${color}">${prog>15?`<span>${prog.toFixed(0)}%</span>`:""}</div>${prog<=15?`<span class="progress-label-outside">${prog.toFixed(0)}%</span>`:""}</div>${prog>=100?'<div class="goal-reached">🎉 Ziel erreicht!</div>':""}</div>`;
   }).join("");
 
   let chart=(isAdmin()&&members.some(m=>entriesArray(m).length>1))?`<div class="card"><h3>📈 Gewichtsveränderung über Zeit (kg)</h3><div class="chart-container"><canvas id="weightChartCanvas"></canvas></div></div>`:"";
-  el.innerHTML=`<div class="card"><h3>Fortschritt zum Ziel</h3>${html}</div>${chart}`;
+  el.innerHTML=`${quoteHtml}<div class="card"><h3>Fortschritt zum Ziel</h3>${html}</div>${chart}`;
   if(chart)renderChart();
 }
 
@@ -737,12 +1084,22 @@ function addEntry(){
       db.ref(`challenge/members/${mid}/entries/${ex[0]}`).set({date,weight});
       document.getElementById("ci-weight").value="";
       showToast("Eintrag aktualisiert ✓");
+      // Check badges after update
+      setTimeout(()=>{
+        const updatedMember={id:mid,...appData.members[mid]};
+        checkBadges(updatedMember,true);
+      },1000);
       return;
     }
   }
   db.ref(`challenge/members/${mid}/entries`).push({date,weight});
   document.getElementById("ci-weight").value="";
   showToast("Eintrag hinzugefügt ✓");
+  // Check badges after adding
+  setTimeout(()=>{
+    const updatedMember={id:mid,...appData.members[mid]};
+    checkBadges(updatedMember,true);
+  },1000);
 }
 
 function deleteEntry(mid,key){
@@ -756,19 +1113,27 @@ function renderRanking(){
   const el=document.getElementById("tab-ranking"),ranked=getRanking();
   const admin=isAdmin();
   if(ranked.length===0){el.innerHTML=`<div class="card"><h3>🏆 Leaderboard</h3><p style="color:var(--muted)">Noch keine Teilnehmer.</p></div>`;return}
+  
+  const leaderHas100=ranked.length>0&&getProgress(ranked[0])>=100;
+  
   el.innerHTML=`<div class="card"><h3>🏆 Leaderboard</h3>${ranked.map((m,i)=>{
     const prog=getProgress(m),currentDiff=getCurrentDiff(m);
     const isGain=isGainGoal(m);
     const diffColor=(isGain?currentDiff<=0:currentDiff>=0)?"var(--green)":"var(--red)";
     const diffText=formatDiff(currentDiff,m);
+    const streak=getStreak(m);
+    const streakBadge=streak>=2?`<span class="rank-streak">🔥 ${streak} Wochen</span>`:'';
+    const badgeCount=getBadgeCount(m);
+    const badgeInfo=badgeCount>0?`<span style="color:var(--dim);font-size:11px;margin-left:8px">🏅${badgeCount}</span>`:'';
     let detail='';
     if(admin){
       const entries=entriesArray(m),latest=entries.length>0?entries[entries.length-1].weight:m.startWeight;
-      detail=`${m.startWeight} → ${latest} kg · <span style="color:${diffColor}">${diffText} kg</span>`;
+      detail=`${m.startWeight} → ${latest} kg · <span style="color:${diffColor}">${diffText} kg</span>${streakBadge}`;
     }else{
-      detail=`<span style="color:${diffColor}">${diffText} kg ${isGain?'zugenommen':'abgenommen'}</span>`;
+      detail=`<span style="color:${diffColor}">${diffText} kg ${isGain?'zugenommen':'abgenommen'}</span>${streakBadge}`;
     }
-    return`<div class="rank-item ${i===0?"top":""}"><div class="rank-medal">${medal(i)}</div><div class="rank-info"><div class="rank-name">${m.name}</div><div class="rank-detail">${detail}</div></div><div class="rank-pct"><div class="pct" style="color:${COLORS[i%COLORS.length]}">${prog.toFixed(0)}%</div>${admin?`<div class="goal">Ziel: ${getGoalWeight(m)} kg</div>`:''}</div></div>`;
+    const crown=i===0&&leaderHas100?'👑 ':'';
+    return`<div class="rank-item ${i===0?"top":""}"><div class="rank-medal">${medal(i)}</div><div class="rank-info"><div class="rank-name">${crown}${m.name}${badgeInfo}</div><div class="rank-detail">${detail}</div></div><div class="rank-pct"><div class="pct" style="color:${COLORS[i%COLORS.length]}">${prog.toFixed(0)}%</div>${admin?`<div class="goal">Ziel: ${getGoalWeight(m)} kg</div>`:''}</div></div>`;
   }).join("")}</div>`;
 }
 
@@ -816,6 +1181,9 @@ function renderMembersUser(el,myMemberId){
   const diffColor=(isGain?currentDiff<=0:currentDiff>=0)?"var(--green)":"var(--red)";
   const diffText=formatDiff(currentDiff,m);
   
+  // Check badges when viewing profile
+  checkBadges(m,true);
+  
   if(editingMember===myMemberId){
     const pe=pendingMemberEdit||{startWeight:m.startWeight,goalWeight:getGoalWeight(m)};
     el.innerHTML=`<div class="card"><h3>👤 Mein Profil bearbeiten</h3>
@@ -860,6 +1228,7 @@ function renderMembersUser(el,myMemberId){
       ${prog>=100?'<div class="goal-reached">🎉 Ziel erreicht!</div>':""}
     </div>
     <button class="btn" style="margin-top:16px" onclick="startMyProfileEdit('${myMemberId}')">✏️ Profil bearbeiten</button>
+    ${renderBadgesSection(m)}
   </div>`;
 }
 
