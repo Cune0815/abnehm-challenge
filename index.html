@@ -252,6 +252,8 @@ let editingMember=null,editingEntry=null,pendingMemberEdit=null;
 let dataLoaded={admins:false,members:false};
 let isDarkMode=true;
 let badgePopupQueue=[];
+let firebaseListeners=[];
+let badgeCheckInProgress=false;
 
 function togglePasswordVisibility(id,btn){
   const input=document.getElementById(id);
@@ -312,14 +314,6 @@ function closeBadgePopup(){
   }
 }
 
-function awardBadge(memberId,badgeKey,showPopup){
-  db.ref(`challenge/members/${memberId}/badges/${badgeKey}`).set(new Date().toISOString());
-  if(showPopup){
-    badgePopupQueue.push(badgeKey);
-    if(badgePopupQueue.length===1)setTimeout(()=>showBadgePopup(badgeKey),500);
-  }
-}
-
 function checkBadgesOnCheckin(member,checkinHour){
   if(!member||!member.id)return;
   const entries=entriesArray(member);
@@ -361,7 +355,6 @@ function checkBadgesOnCheckin(member,checkinHour){
   if(membersArray().length<=3&&!badges.founder)newBadges.push('founder');
   
   if(newBadges.length>0){
-    // Update local data immediately
     if(!appData.members[member.id].badges){
       appData.members[member.id].badges={};
     }
@@ -371,16 +364,12 @@ function checkBadgesOnCheckin(member,checkinHour){
       appData.members[member.id].badges[b]=now.toISOString();
     });
     
-    // Write to Firebase
     db.ref(`challenge/members/${member.id}/badges`).update(updates);
     
-    // Show popups for new badges
     badgePopupQueue=newBadges.slice();
     setTimeout(()=>showBadgePopup(badgePopupQueue[0]),500);
   }
 }
-
-let badgeCheckInProgress=false;
 
 function checkBadgesSilent(member){
   if(!member||!member.id||badgeCheckInProgress)return;
@@ -425,17 +414,14 @@ function checkBadgesSilent(member){
   if(hasLate&&!badges.nightOwl)updates.nightOwl=now.toISOString();
   if(membersArray().length<=3&&!badges.founder)updates.founder=now.toISOString();
   
-  // Only write if there are new badges
   if(Object.keys(updates).length>0){
     badgeCheckInProgress=true;
     
-    // Update local data immediately so UI shows correctly
     if(!appData.members[member.id].badges){
       appData.members[member.id].badges={};
     }
     Object.assign(appData.members[member.id].badges,updates);
     
-    // Then write to Firebase
     db.ref(`challenge/members/${member.id}/badges`).update(updates).then(()=>{
       badgeCheckInProgress=false;
     }).catch(()=>{
@@ -529,7 +515,21 @@ async function handleReset(){
   catch(e){msg.textContent=translateError(e.code);msg.style.color="var(--red)";}
 }
 
-function handleLogout(){auth.signOut();}
+function handleLogout(){
+  firebaseListeners.forEach(({ref,callback})=>{
+    try{ref.off("value",callback);}catch(e){}
+  });
+  firebaseListeners=[];
+  appData={challengeName:"Gewichts-Challenge 2026",deadline:"2026-07-31",inviteCode:DEFAULT_INVITE_CODE,members:{},admins:{}};
+  dataLoaded={admins:false,members:false};
+  currentTab=null;
+  editingMember=null;
+  editingEntry=null;
+  pendingMemberEdit=null;
+  badgePopupQueue=[];
+  if(weightChart){weightChart.destroy();weightChart=null;}
+  auth.signOut();
+}
 
 function isAdmin(){return currentUser&&appData.admins&&appData.admins[currentUser.uid]===true;}
 function getMyMemberId(){
@@ -574,23 +574,29 @@ function startApp(){
   currentTab=null;
   badgePopupQueue=[];
   badgeCheckInProgress=false;
+  firebaseListeners=[];
   
-  // Load all data with listeners
-  db.ref("challenge/challengeName").on("value",snap=>{
+  function addListener(refPath,callback){
+    const ref=db.ref(refPath);
+    ref.on("value",callback);
+    firebaseListeners.push({ref,callback});
+  }
+  
+  addListener("challenge/challengeName",snap=>{
     appData.challengeName=snap.val()||"Gewichts-Challenge 2026";
     if(dataLoaded.admins&&dataLoaded.members)renderAll();
   });
   
-  db.ref("challenge/deadline").on("value",snap=>{
+  addListener("challenge/deadline",snap=>{
     appData.deadline=snap.val()||"2026-07-31";
     if(dataLoaded.admins&&dataLoaded.members)renderAll();
   });
   
-  db.ref("challenge/inviteCode").on("value",snap=>{
+  addListener("challenge/inviteCode",snap=>{
     appData.inviteCode=snap.val()||DEFAULT_INVITE_CODE;
   });
   
-  db.ref("challenge/admins").on("value",snap=>{
+  addListener("challenge/admins",snap=>{
     appData.admins=snap.val()||{};
     const wasLoaded=dataLoaded.admins;
     dataLoaded.admins=true;
@@ -602,7 +608,7 @@ function startApp(){
     }
   });
   
-  db.ref("challenge/members").on("value",snap=>{
+  addListener("challenge/members",snap=>{
     appData.members=snap.val()||{};
     const wasLoaded=dataLoaded.members;
     dataLoaded.members=true;
@@ -619,7 +625,6 @@ function initUI(){
   if(!dataLoaded.admins||!dataLoaded.members)return;
   if(currentTab===null){
     const myId=getMyMemberId();
-    // Wenn User kein verknüpftes Profil hat, zeige Dashboard
     if(isAdmin()){
       currentTab="dashboard";
     }else if(myId){
@@ -650,7 +655,6 @@ function renderTabs(){
   let tabs=`<button class="tab ${currentTab==='dashboard'?'active':''}" onclick="switchTab('dashboard')">📊 Dashboard</button>`;
   tabs+=`<button class="tab ${currentTab==='checkin'?'active':''}" onclick="switchTab('checkin')">📝 Check-in</button>`;
   tabs+=`<button class="tab ${currentTab==='ranking'?'active':''}" onclick="switchTab('ranking')">🏆 Ranking</button>`;
-  // Mein Profil nur anzeigen wenn verknüpft
   if(myId){
     tabs+=`<button class="tab ${currentTab==='profile'?'active':''}" onclick="switchTab('profile')">👤 Mein Profil</button>`;
   }
@@ -733,8 +737,8 @@ function renderCheckin(){
 }
 
 function renderEntries(){
-  const el=document.getElementById("ci-entries"),mid=document.getElementById("ci-member").value;
-  if(!mid||!appData.members[mid]){el.innerHTML="";return;}
+  const el=document.getElementById("ci-entries"),mid=document.getElementById("ci-member")?.value;
+  if(!mid||!appData.members[mid]){if(el)el.innerHTML="";return;}
   const m={id:mid,...appData.members[mid]},entries=entriesArray(m);
   if(entries.length===0){el.innerHTML=`<p style="color:var(--dim);font-size:13px">Noch keine Einträge.</p>`;return;}
   el.innerHTML=`<h4 style="color:var(--muted);font-size:14px;margin-bottom:10px">Einträge</h4><div style="max-height:250px;overflow-y:auto">${[...entries].reverse().map(e=>{
@@ -810,12 +814,10 @@ function renderProfile(){
     return;
   }
   
-  // Render badges section with current data from appData
   const badgesHtml=renderBadgesSection(m);
   
   el.innerHTML=`<div class="card"><h3>👤 Mein Profil</h3><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:16px;margin-bottom:16px"><div style="background:var(--dark-overlay);padding:16px;border-radius:12px;text-align:center"><div style="font-size:24px;font-weight:800;color:var(--accent)">${m.startWeight}</div><div style="font-size:12px;color:var(--dim)">Start (kg)</div></div><div style="background:var(--dark-overlay);padding:16px;border-radius:12px;text-align:center"><div style="font-size:24px;font-weight:800;color:var(--green)">${latest}</div><div style="font-size:12px;color:var(--dim)">Aktuell (kg)</div></div><div style="background:var(--dark-overlay);padding:16px;border-radius:12px;text-align:center"><div style="font-size:24px;font-weight:800;color:var(--pink)">${getGoalWeight(m)}</div><div style="font-size:12px;color:var(--dim)">Ziel (kg)</div></div><div style="background:var(--dark-overlay);padding:16px;border-radius:12px;text-align:center"><div style="font-size:24px;font-weight:800;color:${dc}">${formatDiff(cd,m)}</div><div style="font-size:12px;color:var(--dim)">Differenz</div></div></div><div class="progress-row"><div class="progress-header"><span>Fortschritt</span><span>${prog.toFixed(0)}%</span></div><div class="progress-track"><div class="progress-fill" style="width:${prog}%;background:linear-gradient(90deg,var(--accent),var(--pink))">${prog>15?`<span>${prog.toFixed(0)}%</span>`:""}</div></div></div><button class="btn" style="margin-top:16px" onclick="startMyProfileEdit('${myId}')">✏️ Bearbeiten</button>${badgesHtml}</div>`;
   
-  // Check and award badges silently (won't re-render, just updates Firebase)
   checkBadgesSilent(m);
 }
 
@@ -838,7 +840,7 @@ function renderMembers(){
       const pe=pendingMemberEdit||{name:m.name,startWeight:m.startWeight,goalWeight:getGoalWeight(m)};
       return`<div class="member-edit-row"><div class="row" style="margin-bottom:8px"><div class="field"><label>Name</label><input id="em-name" value="${pe.name}"></div><div class="field-sm"><label>Start</label><input type="number" step="0.1" id="em-start" value="${pe.startWeight}"></div><div class="field-sm"><label>Ziel</label><input type="number" step="0.1" id="em-goal" value="${pe.goalWeight}"></div></div><div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn btn-sm" onclick="saveMemberEdit('${m.id}')">Speichern</button><button class="btn btn-sm btn-secondary" onclick="cancelMemberEdit()">Abbrechen</button></div></div>`;
     }
-    const gd=getGoalDiff(m),linked=m.linkedUserId?'✓':'⚠️';
+    const linked=m.linkedUserId?'✓':'⚠️';
     return`<div class="member-row"><div><span style="font-weight:600;color:${COLORS[i%COLORS.length]}">${m.name}</span><span style="color:var(--dim);font-size:12px;margin-left:8px">${m.startWeight}→${getGoalWeight(m)} kg</span><span style="font-size:11px;margin-left:8px;color:${m.linkedUserId?'var(--green)':'var(--yellow)'}">${linked}</span></div><div style="display:flex;gap:6px"><button class="btn btn-secondary btn-sm" onclick="startMemberEdit('${m.id}')">✏️</button><button class="btn btn-secondary btn-sm" onclick="linkMember('${m.id}')">🔗</button><button class="btn btn-danger btn-sm" onclick="removeMember('${m.id}')">×</button></div></div>`;
   }).join("")}</div>`:"";
   el.innerHTML=`<div class="card"><h3>Hinzufügen</h3><div class="row"><div class="field"><label>Name</label><input id="m-name" placeholder="Anna"></div><div class="field-sm"><label>Start (kg)</label><input type="number" step="0.1" id="m-start" placeholder="70"></div><div class="field-sm"><label>Ziel (kg)</label><input type="number" step="0.1" id="m-goal" placeholder="65"></div><button class="btn" onclick="addMember()">+</button></div><div class="link-info">💡 Ziel niedriger=Abnehmen, höher=Zunehmen. Mit 🔗 Konto verknüpfen.</div></div>${list}`;
