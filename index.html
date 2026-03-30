@@ -86,6 +86,7 @@ label{font-size:12px;color:var(--muted);display:block;margin-bottom:4px}
 .spinner{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite}
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--green);color:#fff;padding:12px 24px;border-radius:10px;font-size:14px;font-weight:600;z-index:999;opacity:0;transition:opacity .3s}
 .toast.show{opacity:1}
+.toast.error{background:var(--red)}
 .link-info{background:rgba(99,102,241,0.1);border:1px solid var(--input-border);border-radius:10px;padding:12px;margin-top:12px;font-size:13px;color:var(--muted)}
 .quote-card{background:linear-gradient(135deg,rgba(99,102,241,0.15),rgba(236,72,153,0.15));border:1px solid rgba(99,102,241,0.3);border-radius:16px;padding:20px 24px;margin-bottom:20px;text-align:center}
 .quote-text{font-size:16px;font-style:italic;color:var(--text);line-height:1.5;margin-bottom:8px}
@@ -207,8 +208,8 @@ label{font-size:12px;color:var(--muted);display:block;margin-bottom:4px}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-database-compat.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-auth-compat.min.js"></script>
 <script>
-const FIREBASE_CONFIG={apiKey:"AIzaSyB1rYgle4dztGxrolyl5-SrFWn0Mf6Mh9g",authDomain:"gewichtsapp-ceb16.firebaseapp.com",databaseURL:"https://gewichtsapp-ceb16-default-rtdb.europe-west1.firebasedatabase.app",projectId:"gewichtsapp-ceb16",storageBucket:"gewichtsapp-ceb16.firebasestorage.app",messagingSenderId:"647578589564",appId:"1:647578589564:web:ea52c1a720c6fac600ecf9"};
-const DEFAULT_INVITE_CODE="challenge2026";
+const FIREBASE_CONFIG={apiKey:"placeholder",authDomain:"placeholder",databaseURL:"placeholder",projectId:"placeholder",storageBucket:"placeholder",messagingSenderId:"placeholder",appId:"placeholder"};
+const DEFAULT_INVITE_CODE="placeholder";
 const COLORS=["#6366f1","#f43f5e","#10b981","#f59e0b","#3b82f6","#ec4899","#14b8a6","#8b5cf6","#ef4444","#06b6d4"];
 
 const QUOTES=[
@@ -253,171 +254,170 @@ let dataLoaded={admins:false,members:false};
 let isDarkMode=true;
 let badgePopupQueue=[];
 let firebaseListeners=[];
+let renderPending=null; // for debounced rendering
 
 // ============================================================
-// NEW BADGE SYSTEM
+// UTILITY: HTML escaping to prevent XSS
 // ============================================================
-// Tracks badges already known at session start — prevents popup replay
-let knownBadges = {};        // { memberId: Set of badge keys }
-let badgeSystemReady = false; // true after first data load
+function esc(str){
+  const d=document.createElement('div');
+  d.textContent=String(str);
+  return d.innerHTML;
+}
 
-// Pure function: compute which badges a member has earned based on current data
-function computeEarnedBadges(member) {
-  const earned = new Set();
-  if (!member || !member.id) return earned;
+// ============================================================
+// UTILITY: Input validation
+// ============================================================
+function validateWeight(val){
+  const n=parseFloat(val);
+  if(isNaN(n)||n<20||n>500)return null;
+  return Math.round(n*10)/10; // round to 1 decimal
+}
 
-  const entries = entriesArray(member);
-  const progress = getProgress(member);
-  const streak = getStreak(member);
-  const now = new Date();
+function validateDate(dateStr){
+  if(!dateStr)return null;
+  const d=new Date(dateStr);
+  if(isNaN(d.getTime()))return null;
+  // Don't allow dates more than 1 year in the future
+  const maxDate=new Date();
+  maxDate.setFullYear(maxDate.getFullYear()+1);
+  if(d>maxDate)return null;
+  return dateStr;
+}
 
-  // Start
-  if (entries.length >= 1) earned.add('firstCheckin');
-  if (member.startWeight && member.goalWeight) earned.add('profileComplete');
+// ============================================================
+// UTILITY: Debounced rendering
+// ============================================================
+function scheduleRender(){
+  if(renderPending)return;
+  renderPending=requestAnimationFrame(()=>{
+    renderPending=null;
+    renderTabs();
+    renderAll();
+  });
+}
 
-  // Time
-  if (entries.length >= 1) {
-    const firstEntry = new Date(entries[0].date);
-    const days = Math.floor((now - firstEntry) / 86400000);
-    if (days >= 7) earned.add('week1');
-    if (days >= 30) earned.add('month1');
+// ============================================================
+// BADGE SYSTEM
+// ============================================================
+let knownBadges={};
+let badgeSystemReady=false;
+
+function computeEarnedBadges(member){
+  const earned=new Set();
+  if(!member||!member.id)return earned;
+  const entries=entriesArray(member);
+  const progress=getProgress(member);
+  const streak=getStreak(member);
+  const now=new Date();
+
+  if(entries.length>=1)earned.add('firstCheckin');
+  if(member.startWeight&&member.goalWeight)earned.add('profileComplete');
+
+  if(entries.length>=1){
+    const firstEntry=new Date(entries[0].date);
+    const days=Math.floor((now-firstEntry)/86400000);
+    if(days>=7)earned.add('week1');
+    if(days>=30)earned.add('month1');
   }
 
-  // Streak
-  if (streak >= 4) earned.add('streak4');
-  if (streak >= 8) earned.add('streak8');
+  if(streak>=4)earned.add('streak4');
+  if(streak>=8)earned.add('streak8');
+  if(entries.length>=10)earned.add('entries10');
+  if(entries.length>=25)earned.add('entries25');
 
-  // Entry count
-  if (entries.length >= 10) earned.add('entries10');
-  if (entries.length >= 25) earned.add('entries25');
+  if(progress>=10)earned.add('progress10');
+  if(progress>=25)earned.add('progress25');
+  if(progress>=50)earned.add('progress50');
+  if(progress>=75)earned.add('progress75');
+  if(progress>=100)earned.add('progress100');
 
-  // Progress
-  if (progress >= 10) earned.add('progress10');
-  if (progress >= 25) earned.add('progress25');
-  if (progress >= 50) earned.add('progress50');
-  if (progress >= 75) earned.add('progress75');
-  if (progress >= 100) earned.add('progress100');
+  const ranked=getRanking();
+  const rankIdx=ranked.findIndex(m=>m.id===member.id);
+  if(rankIdx>=0&&rankIdx<3)earned.add('top3');
+  if(rankIdx===0&&progress>=50)earned.add('champion');
 
-  // Ranking
-  const ranked = getRanking();
-  const rankIdx = ranked.findIndex(m => m.id === member.id);
-  if (rankIdx >= 0 && rankIdx < 3) earned.add('top3');
-  if (rankIdx === 0 && progress >= 50) earned.add('champion');
-
-  // Time-of-day (scan all entries)
-  if (entries.some(e => e.hour !== undefined && e.hour < 7)) earned.add('earlyBird');
-  if (entries.some(e => e.hour !== undefined && e.hour >= 23)) earned.add('nightOwl');
-
-  // Founder
-  if (membersArray().length <= 3) earned.add('founder');
+  if(entries.some(e=>e.hour!==undefined&&e.hour<7))earned.add('earlyBird');
+  if(entries.some(e=>e.hour!==undefined&&e.hour>=23))earned.add('nightOwl');
+  if(membersArray().length<=3)earned.add('founder');
 
   return earned;
 }
 
-// Sync earned badges to Firebase. Returns array of NEWLY written badge keys.
-function syncBadgesToFirebase(member) {
-  if (!member || !member.id) return [];
+function syncBadgesToFirebase(member){
+  if(!member||!member.id)return[];
+  const earned=computeEarnedBadges(member);
+  const stored=member.badges||{};
+  const now=new Date().toISOString();
+  const newKeys=[];
+  const updates={};
 
-  const earned = computeEarnedBadges(member);
-  const stored = member.badges || {};
-  const now = new Date().toISOString();
-
-  const newKeys = [];
-  const updates = {};
-
-  earned.forEach(key => {
-    if (!stored[key]) {
+  earned.forEach(key=>{
+    if(!stored[key]){
       newKeys.push(key);
-      updates[key] = now;
+      updates[key]=now;
     }
   });
 
-  if (Object.keys(updates).length > 0) {
-    // Update local state immediately so renders see it without waiting for Firebase
-    if (!appData.members[member.id].badges) {
-      appData.members[member.id].badges = {};
-    }
-    Object.keys(updates).forEach(k => {
-      appData.members[member.id].badges[k] = updates[k];
-    });
-
-    // Write to Firebase (fire-and-forget)
+  if(Object.keys(updates).length>0){
+    if(!appData.members[member.id].badges)appData.members[member.id].badges={};
+    Object.keys(updates).forEach(k=>{appData.members[member.id].badges[k]=updates[k];});
     db.ref(`challenge/members/${member.id}/badges`).update(updates)
-      .catch(err => console.error('Badge sync error:', err));
+      .catch(()=>{}); // silently ignore permission errors for other users
   }
-
   return newKeys;
 }
 
-// Called ONCE on first data load — snapshots all currently earned badges
-// so we never show popups for them
-function initBadgeTracking() {
-  knownBadges = {};
-  const members = membersArray();
-  members.forEach(m => {
-    const stored = new Set(Object.keys(m.badges || {}));
-    const earned = computeEarnedBadges(m);
-    // Union of stored + computed = everything already known
-    knownBadges[m.id] = new Set([...stored, ...earned]);
+function initBadgeTracking(){
+  knownBadges={};
+  const members=membersArray();
+  members.forEach(m=>{
+    const stored=new Set(Object.keys(m.badges||{}));
+    const earned=computeEarnedBadges(m);
+    knownBadges[m.id]=new Set([...stored,...earned]);
   });
-  badgeSystemReady = true;
-
-  // Silently persist any badges that are earned but not yet in Firebase
-  // for ALL members (not just the logged-in user)
+  badgeSystemReady=true;
   syncAllMemberBadges();
 }
 
-// Sync badges for members the current user has write access to
-// Admins can write all members; regular users only their own
-function syncAllMemberBadges() {
-  if (!badgeSystemReady) return;
-  const members = membersArray();
-  const admin = isAdmin();
-  const myMemberId = getMyMemberId();
-
-  members.forEach(m => {
-    // Only attempt writes we have permission for
-    if (admin || m.id === myMemberId) {
+function syncAllMemberBadges(){
+  if(!badgeSystemReady)return;
+  const members=membersArray();
+  const admin=isAdmin();
+  const myMemberId=getMyMemberId();
+  members.forEach(m=>{
+    if(admin||m.id===myMemberId){
       syncBadgesToFirebase(m);
     }
   });
 }
 
-// Show popups only for badges the user hasn't seen this session
-function showNewBadgePopups(memberId, newBadgeKeys) {
-  if (!knownBadges[memberId]) {
-    knownBadges[memberId] = new Set();
-  }
-
-  const unseen = newBadgeKeys.filter(k => !knownBadges[memberId].has(k));
-  // Mark as known immediately
-  unseen.forEach(k => knownBadges[memberId].add(k));
-
-  if (unseen.length > 0) {
-    badgePopupQueue = unseen.slice();
-    setTimeout(() => showBadgePopup(badgePopupQueue[0]), 500);
+function showNewBadgePopups(memberId,newBadgeKeys){
+  if(!knownBadges[memberId])knownBadges[memberId]=new Set();
+  const unseen=newBadgeKeys.filter(k=>!knownBadges[memberId].has(k));
+  unseen.forEach(k=>knownBadges[memberId].add(k));
+  if(unseen.length>0){
+    badgePopupQueue=unseen.slice();
+    setTimeout(()=>showBadgePopup(badgePopupQueue[0]),500);
   }
 }
 
-// Called after a check-in is saved — syncs badges AND shows popups for new ones
-function onCheckinComplete(memberId) {
-  const mData = appData.members[memberId];
-  if (!mData) return;
-  const member = { id: memberId, ...mData };
-  const newKeys = syncBadgesToFirebase(member);
-  showNewBadgePopups(memberId, newKeys);
+function onCheckinComplete(memberId){
+  const mData=appData.members[memberId];
+  if(!mData)return;
+  const member={id:memberId,...mData};
+  const newKeys=syncBadgesToFirebase(member);
+  showNewBadgePopups(memberId,newKeys);
 }
 
-// Called from renderProfile — syncs without popups
-function syncBadgesSilent(member) {
-  if (!member || !member.id || !badgeSystemReady) return;
+function syncBadgesSilent(member){
+  if(!member||!member.id||!badgeSystemReady)return;
   syncBadgesToFirebase(member);
 }
 
 // ============================================================
-// END NEW BADGE SYSTEM
+// UI HELPERS
 // ============================================================
-
 function togglePasswordVisibility(id,btn){
   const input=document.getElementById(id);
   if(input.type==='password'){input.type='text';btn.textContent='🙈';}
@@ -434,9 +434,11 @@ function show(id){
     document.getElementById(s).classList.toggle("hidden",s!==id));
 }
 
-function showToast(msg){
+function showToast(msg,isError){
   const t=document.getElementById("toast");
-  t.textContent=msg;t.classList.add("show");
+  t.textContent=msg;
+  t.classList.toggle('error',!!isError);
+  t.classList.add("show");
   setTimeout(()=>t.classList.remove("show"),2500);
 }
 
@@ -481,29 +483,31 @@ function getBadgeCount(member){return Object.keys(member.badges||{}).length;}
 
 function renderBadgesPreview(member){
   const badges=member.badges||{};
-  return Object.keys(badges).slice(0,5).map(k=>BADGES[k]?`<span class="badge-mini" title="${BADGES[k].name}">${BADGES[k].icon}</span>`:'').join('');
+  return Object.keys(badges).slice(0,5).map(k=>BADGES[k]?`<span class="badge-mini" title="${esc(BADGES[k].name)}">${BADGES[k].icon}</span>`:'').join('');
 }
 
 function renderBadgesSection(member){
   const badges=member.badges||{};
   const unlockedCount=Object.keys(badges).length;
   const totalCount=Object.keys(BADGES).length;
-  
   const cats=[{key:'start',name:'Einstieg'},{key:'time',name:'Zeit'},{key:'entries',name:'Aktivität'},{key:'progress',name:'Fortschritt'},{key:'ranking',name:'Ranking'},{key:'special',name:'Spezial'}];
   let html=`<div class="badges-section"><h4>🏅 Badges (${unlockedCount}/${totalCount})</h4>`;
   cats.forEach(cat=>{
     const catBadges=Object.entries(BADGES).filter(([k,b])=>b.category===cat.key);
     if(catBadges.length===0)return;
-    html+=`<div style="margin-bottom:16px"><div style="font-size:11px;color:var(--dim);margin-bottom:8px;text-transform:uppercase">${cat.name}</div><div class="badges-grid">`;
+    html+=`<div style="margin-bottom:16px"><div style="font-size:11px;color:var(--dim);margin-bottom:8px;text-transform:uppercase">${esc(cat.name)}</div><div class="badges-grid">`;
     catBadges.forEach(([key,badge])=>{
       const unlocked=badges.hasOwnProperty(key)&&badges[key];
-      html+=`<div class="badge-card ${unlocked?'unlocked':'locked'}"><div class="badge-card-icon">${badge.icon}</div><div class="badge-card-name">${badge.name}</div><div class="badge-card-desc">${badge.desc}</div></div>`;
+      html+=`<div class="badge-card ${unlocked?'unlocked':'locked'}"><div class="badge-card-icon">${badge.icon}</div><div class="badge-card-name">${esc(badge.name)}</div><div class="badge-card-desc">${esc(badge.desc)}</div></div>`;
     });
     html+='</div></div>';
   });
   return html+'</div>';
 }
 
+// ============================================================
+// AUTH
+// ============================================================
 function toggleAuthMode(){
   isRegisterMode=!isRegisterMode;
   document.getElementById("authSubtitle").textContent=isRegisterMode?"Erstelle ein neues Konto.":"Melde dich an.";
@@ -537,6 +541,8 @@ async function handleAuth(){
   const btn=document.getElementById("authBtn");
   const overlay=document.getElementById("authLoadingOverlay");
   errEl.textContent="";
+
+  if(!email||!pw){errEl.textContent="Bitte alle Felder ausfüllen.";return;}
 
   if(isRegisterMode){
     const code=document.getElementById("inviteCode").value.trim();
@@ -573,17 +579,18 @@ function handleLogout(){
   appData={challengeName:"Gewichts-Challenge 2026",deadline:"2026-07-31",inviteCode:DEFAULT_INVITE_CODE,members:{},admins:{}};
   dataLoaded={admins:false,members:false};
   currentTab=null;
-  editingMember=null;
-  editingEntry=null;
-  pendingMemberEdit=null;
+  editingMember=null;editingEntry=null;pendingMemberEdit=null;
   badgePopupQueue=[];
-  // Reset badge tracking
   knownBadges={};
   badgeSystemReady=false;
+  if(renderPending){cancelAnimationFrame(renderPending);renderPending=null;}
   if(weightChart){weightChart.destroy();weightChart=null;}
   auth.signOut();
 }
 
+// ============================================================
+// DATA HELPERS
+// ============================================================
 function isAdmin(){return currentUser&&appData.admins&&appData.admins[currentUser.uid]===true;}
 function getMyMemberId(){
   if(!currentUser)return null;
@@ -620,6 +627,9 @@ function getStreak(m){
   return streak;
 }
 
+// ============================================================
+// APP INIT & FIREBASE LISTENERS
+// ============================================================
 function startApp(){
   show("loadingScreen");
   document.getElementById("userEmail").textContent=currentUser.email;
@@ -638,12 +648,12 @@ function startApp(){
   
   addListener("challenge/challengeName",snap=>{
     appData.challengeName=snap.val()||"Gewichts-Challenge 2026";
-    if(dataLoaded.admins&&dataLoaded.members)renderAll();
+    if(dataLoaded.admins&&dataLoaded.members)scheduleRender();
   });
   
   addListener("challenge/deadline",snap=>{
     appData.deadline=snap.val()||"2026-07-31";
-    if(dataLoaded.admins&&dataLoaded.members)renderAll();
+    if(dataLoaded.admins&&dataLoaded.members)scheduleRender();
   });
   
   addListener("challenge/inviteCode",snap=>{
@@ -657,8 +667,7 @@ function startApp(){
     if(!wasLoaded&&dataLoaded.members){
       initUI();
     }else if(dataLoaded.members){
-      renderTabs();
-      renderAll();
+      scheduleRender();
     }
   });
   
@@ -667,24 +676,18 @@ function startApp(){
     const wasLoaded=dataLoaded.members;
     dataLoaded.members=true;
     if(!wasLoaded&&dataLoaded.admins){
-      // FIRST LOAD: init badge tracking before any rendering
       initBadgeTracking();
       initUI();
     }else if(dataLoaded.admins){
-      // SUBSEQUENT UPDATES: sync badges for all members
-      // (e.g. after someone else checks in, their badges get computed)
       syncAllMemberBadges();
-      renderTabs();
-      renderAll();
+      scheduleRender();
     }
   });
 }
 
 function initUI(){
   if(!dataLoaded.admins||!dataLoaded.members)return;
-  if(currentTab===null){
-    currentTab="dashboard";
-  }
+  if(currentTab===null)currentTab="dashboard";
   show("appScreen");
   initPullToRefresh();
   renderTabs();
@@ -700,6 +703,9 @@ function initPullToRefresh(){
   app.addEventListener('touchend',()=>{if(indicator.classList.contains('show')){renderAll();indicator.classList.remove('show');showToast('Aktualisiert ✓');}pulling=false;});
 }
 
+// ============================================================
+// TAB NAVIGATION
+// ============================================================
 function renderTabs(){
   const admin=isAdmin();
   const myId=getMyMemberId();
@@ -731,6 +737,9 @@ function switchTab(name){
   renderAll();
 }
 
+// ============================================================
+// RENDER DISPATCHER
+// ============================================================
 function renderAll(){
   if(!dataLoaded.admins||!dataLoaded.members)return;
   
@@ -744,10 +753,11 @@ function renderAll(){
   else if(currentTab==="settings")renderSettings();
 }
 
+// ============================================================
+// DASHBOARD
+// ============================================================
 function renderDashboard(){
   const el=document.getElementById("tab-dashboard"),members=membersArray();
-  // Sync badges for all members whenever dashboard renders
-  // This catches badges for users who never visit their Profile tab
   syncAllMemberBadges();
   if(members.length===0){el.innerHTML=`<div class="card empty"><div class="icon">🚀</div><h2>Starte deine Challenge!</h2><p style="color:var(--muted)">${isAdmin()?'Füge Teilnehmer hinzu.':'Warte auf den Admin.'}</p></div>`;return;}
   const quote=getDailyQuote();
@@ -756,10 +766,10 @@ function renderDashboard(){
     const gd=Math.abs(getGoalDiff(m)),prog=getProgress(m),cd=getCurrentDiff(m);
     const color=prog>=100?"linear-gradient(90deg,#10b981,#34d399)":`linear-gradient(90deg,${COLORS[i%COLORS.length]},${COLORS[(i+1)%COLORS.length]})`;
     const stats=isAdmin()?`${formatDiff(cd,m)} / ${isGainGoal(m)?'+':'-'}${gd.toFixed(1)} kg`:`${prog.toFixed(0)}%`;
-    return`<div class="progress-row"><div class="progress-header"><span class="name">${medal(i)} ${m.name} ${renderBadgesPreview(m)}</span><span class="stats">${stats}</span></div><div class="progress-track"><div class="progress-fill" style="width:${prog}%;background:${color}">${prog>15?`<span>${prog.toFixed(0)}%</span>`:""}</div>${prog<=15?`<span class="progress-label-outside">${prog.toFixed(0)}%</span>`:""}</div>${prog>=100?'<div class="goal-reached">🎉 Ziel erreicht!</div>':""}</div>`;
+    return`<div class="progress-row"><div class="progress-header"><span class="name">${medal(i)} ${esc(m.name)} ${renderBadgesPreview(m)}</span><span class="stats">${stats}</span></div><div class="progress-track"><div class="progress-fill" style="width:${prog}%;background:${color}">${prog>15?`<span>${prog.toFixed(0)}%</span>`:""}</div>${prog<=15?`<span class="progress-label-outside">${prog.toFixed(0)}%</span>`:""}</div>${prog>=100?'<div class="goal-reached">🎉 Ziel erreicht!</div>':""}</div>`;
   }).join("");
   let chart=(isAdmin()&&members.some(m=>entriesArray(m).length>1))?`<div class="card"><h3>📈 Verlauf</h3><div class="chart-container"><canvas id="weightChartCanvas"></canvas></div></div>`:"";
-  el.innerHTML=`<div class="quote-card"><div class="quote-text">"${quote.text}"</div><div class="quote-author">— ${quote.author}</div></div><div class="card"><h3>Fortschritt</h3>${html}</div>${chart}`;
+  el.innerHTML=`<div class="quote-card"><div class="quote-text">"${esc(quote.text)}"</div><div class="quote-author">— ${esc(quote.author)}</div></div><div class="card"><h3>Fortschritt</h3>${html}</div>${chart}`;
   if(chart)renderChart();
 }
 
@@ -778,6 +788,9 @@ function renderChart(){
   weightChart=new Chart(canvas,{type:"line",data:{labels:sorted.map(d=>d.slice(5)),datasets},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:"#94a3b8"}}},scales:{x:{ticks:{color:"#64748b"}},y:{ticks:{color:"#64748b"}}}}});
 }
 
+// ============================================================
+// CHECK-IN
+// ============================================================
 function renderCheckin(){
   const el=document.getElementById("tab-checkin");
   const admin=isAdmin();
@@ -785,8 +798,8 @@ function renderCheckin(){
   const members=admin?membersArray():membersArray().filter(m=>m.id===myId);
   if(members.length===0){el.innerHTML=`<div class="card"><h3>📝 Check-in</h3><p style="color:var(--muted)">${admin?'Erst Teilnehmer hinzufügen!':'Profil noch nicht verknüpft.'}</p></div>`;return;}
   const today=new Date().toISOString().slice(0,10);
-  let selectHtml=admin?`<div class="field"><label>Teilnehmer</label><select id="ci-member"><option value="">Wählen...</option>${members.map(m=>`<option value="${m.id}">${m.name}</option>`).join("")}</select></div>`:`<input type="hidden" id="ci-member" value="${myId}"><div class="field"><label>Teilnehmer</label><input value="${members[0].name}" disabled></div>`;
-  el.innerHTML=`<div class="card"><h3>📝 Check-in</h3><div class="row">${selectHtml}<div class="field-date"><label>Datum</label><input type="date" id="ci-date" value="${today}"></div><div class="field-sm"><label>Gewicht (kg)</label><input type="number" step="0.1" id="ci-weight" placeholder="z.B. 82.5"></div><button class="btn" onclick="addEntry()">Eintragen ✓</button></div><div id="ci-entries" style="margin-top:20px"></div></div>`;
+  let selectHtml=admin?`<div class="field"><label>Teilnehmer</label><select id="ci-member"><option value="">Wählen...</option>${members.map(m=>`<option value="${m.id}">${esc(m.name)}</option>`).join("")}</select></div>`:`<input type="hidden" id="ci-member" value="${myId}"><div class="field"><label>Teilnehmer</label><input value="${esc(members[0].name)}" disabled></div>`;
+  el.innerHTML=`<div class="card"><h3>📝 Check-in</h3><div class="row">${selectHtml}<div class="field-date"><label>Datum</label><input type="date" id="ci-date" value="${today}"></div><div class="field-sm"><label>Gewicht (kg)</label><input type="number" step="0.1" min="20" max="500" id="ci-weight" placeholder="z.B. 82.5"></div><button class="btn" onclick="addEntry()">Eintragen ✓</button></div><div id="ci-entries" style="margin-top:20px"></div></div>`;
   if(admin)document.getElementById("ci-member").addEventListener("change",()=>{editingEntry=null;renderEntries();});
   if(document.getElementById("ci-member").value)renderEntries();
 }
@@ -798,7 +811,7 @@ function renderEntries(){
   if(entries.length===0){el.innerHTML=`<p style="color:var(--dim);font-size:13px">Noch keine Einträge.</p>`;return;}
   el.innerHTML=`<h4 style="color:var(--muted);font-size:14px;margin-bottom:10px">Einträge</h4><div style="max-height:250px;overflow-y:auto">${[...entries].reverse().map(e=>{
     if(editingEntry&&editingEntry.mid===mid&&editingEntry.key===e.key){
-      return`<div class="edit-inline"><input type="date" id="edit-entry-date" value="${e.date}"><input type="number" step="0.1" id="edit-entry-weight" value="${e.weight}"><button class="btn btn-sm" onclick="saveEntryEdit('${mid}','${e.key}')">✓</button><button class="btn btn-sm btn-secondary" onclick="cancelEntryEdit()">✕</button></div>`;
+      return`<div class="edit-inline"><input type="date" id="edit-entry-date" value="${e.date}"><input type="number" step="0.1" min="20" max="500" id="edit-entry-weight" value="${e.weight}"><button class="btn btn-sm" onclick="saveEntryEdit('${mid}','${e.key}')">✓</button><button class="btn btn-sm btn-secondary" onclick="cancelEntryEdit()">✕</button></div>`;
     }
     return`<div class="entry-row"><span>${fmtDate(e.date)} — <strong>${e.weight} kg</strong></span><div class="entry-actions"><button class="edit-btn" onclick="startEntryEdit('${mid}','${e.key}')">✏️</button><button class="del-btn" onclick="deleteEntry('${mid}','${e.key}')">×</button></div></div>`;
   }).join("")}</div>`;
@@ -807,9 +820,9 @@ function renderEntries(){
 function startEntryEdit(mid,key){editingEntry={mid,key};renderEntries();}
 function cancelEntryEdit(){editingEntry=null;renderEntries();}
 function saveEntryEdit(mid,key){
-  const date=document.getElementById("edit-entry-date").value;
-  const weight=parseFloat(document.getElementById("edit-entry-weight").value);
-  if(!date||isNaN(weight))return;
+  const date=validateDate(document.getElementById("edit-entry-date").value);
+  const weight=validateWeight(document.getElementById("edit-entry-weight").value);
+  if(!date||weight===null){showToast("Ungültige Eingabe",true);return;}
   editingEntry=null;
   db.ref(`challenge/members/${mid}/entries/${key}`).update({date,weight});
   showToast("Gespeichert ✓");
@@ -817,9 +830,11 @@ function saveEntryEdit(mid,key){
 
 function addEntry(){
   const mid=document.getElementById("ci-member").value;
-  const date=document.getElementById("ci-date").value;
-  const weight=parseFloat(document.getElementById("ci-weight").value);
-  if(!mid||!date||isNaN(weight))return;
+  const date=validateDate(document.getElementById("ci-date").value);
+  const weight=validateWeight(document.getElementById("ci-weight").value);
+  if(!mid){showToast("Bitte Teilnehmer wählen",true);return;}
+  if(!date){showToast("Ungültiges Datum",true);return;}
+  if(weight===null){showToast("Gewicht muss zwischen 20-500 kg liegen",true);return;}
   
   const hour=new Date().getHours();
   const m=appData.members[mid];
@@ -827,10 +842,8 @@ function addEntry(){
   if(m&&m.entries){
     const ex=Object.entries(m.entries).find(([k,v])=>v.date===date);
     if(ex){
-      // Update existing entry for this date
       const entryData={date,weight,hour};
       db.ref(`challenge/members/${mid}/entries/${ex[0]}`).set(entryData);
-      // Update local state immediately
       appData.members[mid].entries[ex[0]]=entryData;
       document.getElementById("ci-weight").value="";
       showToast("Aktualisiert ✓");
@@ -839,11 +852,9 @@ function addEntry(){
     }
   }
   
-  // New entry
   const entryData={date,weight,hour};
   const ref=db.ref(`challenge/members/${mid}/entries`).push(entryData);
-  // Update local state immediately so badge check sees the new entry
-  if(!appData.members[mid].entries) appData.members[mid].entries={};
+  if(!appData.members[mid].entries)appData.members[mid].entries={};
   appData.members[mid].entries[ref.key]=entryData;
   
   document.getElementById("ci-weight").value="";
@@ -853,6 +864,9 @@ function addEntry(){
 
 function deleteEntry(mid,key){if(confirm("Eintrag löschen?"))db.ref(`challenge/members/${mid}/entries/${key}`).remove();}
 
+// ============================================================
+// RANKING
+// ============================================================
 function renderRanking(){
   const el=document.getElementById("tab-ranking"),ranked=getRanking(),admin=isAdmin();
   if(ranked.length===0){el.innerHTML=`<div class="card"><h3>🏆 Leaderboard</h3><p style="color:var(--muted)">Noch keine Teilnehmer.</p></div>`;return;}
@@ -862,10 +876,13 @@ function renderRanking(){
     const streakBadge=streak>=2?`<span class="rank-streak">🔥 ${streak}w</span>`:'';
     const bc=getBadgeCount(m);
     let detail=admin?`${m.startWeight}→${(entriesArray(m).slice(-1)[0]?.weight||m.startWeight)} kg · <span style="color:${dc}">${formatDiff(cd,m)} kg</span>${streakBadge}`:`<span style="color:${dc}">${formatDiff(cd,m)} kg</span>${streakBadge}`;
-    return`<div class="rank-item ${i===0?"top":""}"><div class="rank-medal">${medal(i)}</div><div class="rank-info"><div class="rank-name">${m.name}${bc>0?` <span style="color:var(--dim);font-size:11px">🏅${bc}</span>`:''}</div><div class="rank-detail">${detail}</div></div><div class="rank-pct"><div class="pct" style="color:${COLORS[i%COLORS.length]}">${prog.toFixed(0)}%</div>${admin?`<div class="goal">Ziel: ${getGoalWeight(m)} kg</div>`:''}</div></div>`;
+    return`<div class="rank-item ${i===0?"top":""}"><div class="rank-medal">${medal(i)}</div><div class="rank-info"><div class="rank-name">${esc(m.name)}${bc>0?` <span style="color:var(--dim);font-size:11px">🏅${bc}</span>`:''}</div><div class="rank-detail">${detail}</div></div><div class="rank-pct"><div class="pct" style="color:${COLORS[i%COLORS.length]}">${prog.toFixed(0)}%</div>${admin?`<div class="goal">Ziel: ${getGoalWeight(m)} kg</div>`:''}</div></div>`;
   }).join("")}</div>`;
 }
 
+// ============================================================
+// PROFILE
+// ============================================================
 function renderProfile(){
   const el=document.getElementById("tab-profile");
   if(!el)return;
@@ -887,13 +904,13 @@ function renderProfile(){
   const latest=entries.length>0?entries[entries.length-1].weight:m.startWeight;
   const dc=(isGainGoal(m)?cd<=0:cd>=0)?"var(--green)":"var(--red)";
   
+  // Skip full re-render if user is editing
   if(editingMember===myId){
-    const pe=pendingMemberEdit||{startWeight:m.startWeight,goalWeight:getGoalWeight(m)};
-    el.innerHTML=`<div class="card"><h3>👤 Profil bearbeiten</h3><div class="row" style="margin-bottom:16px"><div class="field-sm"><label>Startgewicht</label><input type="number" step="0.1" id="em-start" value="${pe.startWeight}"></div><div class="field-sm"><label>Zielgewicht</label><input type="number" step="0.1" id="em-goal" value="${pe.goalWeight}"></div></div><p style="color:var(--dim);font-size:12px;margin-bottom:16px">💡 Ziel niedriger=Abnehmen, höher=Zunehmen</p><div style="display:flex;gap:8px"><button class="btn" onclick="saveMyProfile('${myId}')">Speichern ✓</button><button class="btn btn-secondary" onclick="cancelMemberEdit()">Abbrechen</button></div></div>`;
+    // Only re-render if the edit form isn't already showing
+    if(!document.getElementById("em-start"))renderProfileEditForm(myId,m);
     return;
   }
   
-  // Silently sync badges (no popups) — this catches time-based badges etc.
   syncBadgesSilent(m);
   
   const badgesHtml=renderBadgesSection(m);
@@ -901,45 +918,69 @@ function renderProfile(){
   el.innerHTML=`<div class="card"><h3>👤 Mein Profil</h3><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:16px;margin-bottom:16px"><div style="background:var(--dark-overlay);padding:16px;border-radius:12px;text-align:center"><div style="font-size:24px;font-weight:800;color:var(--accent)">${m.startWeight}</div><div style="font-size:12px;color:var(--dim)">Start (kg)</div></div><div style="background:var(--dark-overlay);padding:16px;border-radius:12px;text-align:center"><div style="font-size:24px;font-weight:800;color:var(--green)">${latest}</div><div style="font-size:12px;color:var(--dim)">Aktuell (kg)</div></div><div style="background:var(--dark-overlay);padding:16px;border-radius:12px;text-align:center"><div style="font-size:24px;font-weight:800;color:var(--pink)">${getGoalWeight(m)}</div><div style="font-size:12px;color:var(--dim)">Ziel (kg)</div></div><div style="background:var(--dark-overlay);padding:16px;border-radius:12px;text-align:center"><div style="font-size:24px;font-weight:800;color:${dc}">${formatDiff(cd,m)}</div><div style="font-size:12px;color:var(--dim)">Differenz</div></div></div><div class="progress-row"><div class="progress-header"><span>Fortschritt</span><span>${prog.toFixed(0)}%</span></div><div class="progress-track"><div class="progress-fill" style="width:${prog}%;background:linear-gradient(90deg,var(--accent),var(--pink))">${prog>15?`<span>${prog.toFixed(0)}%</span>`:""}</div></div></div><button class="btn" style="margin-top:16px" onclick="startMyProfileEdit('${myId}')">✏️ Bearbeiten</button>${badgesHtml}</div>`;
 }
 
+function renderProfileEditForm(myId,m){
+  const el=document.getElementById("tab-profile");
+  const pe=pendingMemberEdit||{startWeight:m.startWeight,goalWeight:getGoalWeight(m)};
+  el.innerHTML=`<div class="card"><h3>👤 Profil bearbeiten</h3><div class="row" style="margin-bottom:16px"><div class="field-sm"><label>Startgewicht</label><input type="number" step="0.1" min="20" max="500" id="em-start" value="${pe.startWeight}"></div><div class="field-sm"><label>Zielgewicht</label><input type="number" step="0.1" min="20" max="500" id="em-goal" value="${pe.goalWeight}"></div></div><p style="color:var(--dim);font-size:12px;margin-bottom:16px">💡 Ziel niedriger=Abnehmen, höher=Zunehmen</p><div style="display:flex;gap:8px"><button class="btn" onclick="saveMyProfile('${myId}')">Speichern ✓</button><button class="btn btn-secondary" onclick="cancelMemberEdit()">Abbrechen</button></div></div>`;
+}
+
 function startMyProfileEdit(id){editingMember=id;pendingMemberEdit={startWeight:appData.members[id].startWeight,goalWeight:getGoalWeight(appData.members[id])};renderProfile();}
 function cancelMemberEdit(){editingMember=null;pendingMemberEdit=null;renderAll();}
 function saveMyProfile(id){
-  const sw=parseFloat(document.getElementById("em-start").value),gw=parseFloat(document.getElementById("em-goal").value);
-  if(isNaN(sw)||isNaN(gw))return;
+  const sw=validateWeight(document.getElementById("em-start").value);
+  const gw=validateWeight(document.getElementById("em-goal").value);
+  if(sw===null||gw===null){showToast("Gewicht muss zwischen 20-500 kg liegen",true);return;}
   editingMember=null;pendingMemberEdit=null;
   db.ref(`challenge/members/${id}`).update({startWeight:sw,goalWeight:gw});
   showToast("Gespeichert ✓");
 }
 
+// ============================================================
+// MEMBERS (Admin)
+// ============================================================
 function renderMembers(){
   const el=document.getElementById("tab-members");
   if(!isAdmin()){el.innerHTML='';return;}
   const members=membersArray();
+  
+  // Don't re-render the full list if we're editing — protect form state
+  if(editingMember&&document.getElementById("em-name"))return;
+  
   let list=members.length>0?`<div class="card"><h3>Teilnehmer</h3>${members.map((m,i)=>{
     if(editingMember===m.id){
       const pe=pendingMemberEdit||{name:m.name,startWeight:m.startWeight,goalWeight:getGoalWeight(m)};
-      return`<div class="member-edit-row"><div class="row" style="margin-bottom:8px"><div class="field"><label>Name</label><input id="em-name" value="${pe.name}"></div><div class="field-sm"><label>Start</label><input type="number" step="0.1" id="em-start" value="${pe.startWeight}"></div><div class="field-sm"><label>Ziel</label><input type="number" step="0.1" id="em-goal" value="${pe.goalWeight}"></div></div><div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn btn-sm" onclick="saveMemberEdit('${m.id}')">Speichern</button><button class="btn btn-sm btn-secondary" onclick="cancelMemberEdit()">Abbrechen</button></div></div>`;
+      return`<div class="member-edit-row"><div class="row" style="margin-bottom:8px"><div class="field"><label>Name</label><input id="em-name" value="${esc(pe.name)}"></div><div class="field-sm"><label>Start</label><input type="number" step="0.1" min="20" max="500" id="em-start" value="${pe.startWeight}"></div><div class="field-sm"><label>Ziel</label><input type="number" step="0.1" min="20" max="500" id="em-goal" value="${pe.goalWeight}"></div></div><div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn btn-sm" onclick="saveMemberEdit('${m.id}')">Speichern</button><button class="btn btn-sm btn-secondary" onclick="cancelMemberEdit()">Abbrechen</button></div></div>`;
     }
     const linked=m.linkedUserId?'✓':'⚠️';
-    return`<div class="member-row"><div><span style="font-weight:600;color:${COLORS[i%COLORS.length]}">${m.name}</span><span style="color:var(--dim);font-size:12px;margin-left:8px">${m.startWeight}→${getGoalWeight(m)} kg</span><span style="font-size:11px;margin-left:8px;color:${m.linkedUserId?'var(--green)':'var(--yellow)'}">${linked}</span></div><div style="display:flex;gap:6px"><button class="btn btn-secondary btn-sm" onclick="startMemberEdit('${m.id}')">✏️</button><button class="btn btn-secondary btn-sm" onclick="linkMember('${m.id}')">🔗</button><button class="btn btn-danger btn-sm" onclick="removeMember('${m.id}')">×</button></div></div>`;
+    return`<div class="member-row"><div><span style="font-weight:600;color:${COLORS[i%COLORS.length]}">${esc(m.name)}</span><span style="color:var(--dim);font-size:12px;margin-left:8px">${m.startWeight}→${getGoalWeight(m)} kg</span><span style="font-size:11px;margin-left:8px;color:${m.linkedUserId?'var(--green)':'var(--yellow)'}">${linked}</span></div><div style="display:flex;gap:6px"><button class="btn btn-secondary btn-sm" onclick="startMemberEdit('${m.id}')">✏️</button><button class="btn btn-secondary btn-sm" onclick="linkMember('${m.id}')">🔗</button><button class="btn btn-danger btn-sm" onclick="removeMember('${m.id}')">×</button></div></div>`;
   }).join("")}</div>`:"";
-  el.innerHTML=`<div class="card"><h3>Hinzufügen</h3><div class="row"><div class="field"><label>Name</label><input id="m-name" placeholder="Anna"></div><div class="field-sm"><label>Start (kg)</label><input type="number" step="0.1" id="m-start" placeholder="70"></div><div class="field-sm"><label>Ziel (kg)</label><input type="number" step="0.1" id="m-goal" placeholder="65"></div><button class="btn" onclick="addMember()">+</button></div><div class="link-info">💡 Ziel niedriger=Abnehmen, höher=Zunehmen. Mit 🔗 Konto verknüpfen.</div></div>${list}`;
+  el.innerHTML=`<div class="card"><h3>Hinzufügen</h3><div class="row"><div class="field"><label>Name</label><input id="m-name" placeholder="Anna"></div><div class="field-sm"><label>Start (kg)</label><input type="number" step="0.1" min="20" max="500" id="m-start" placeholder="70"></div><div class="field-sm"><label>Ziel (kg)</label><input type="number" step="0.1" min="20" max="500" id="m-goal" placeholder="65"></div><button class="btn" onclick="addMember()">+</button></div><div class="link-info">💡 Ziel niedriger=Abnehmen, höher=Zunehmen. Mit 🔗 Konto verknüpfen.</div></div>${list}`;
 }
 
 function startMemberEdit(id){editingMember=id;pendingMemberEdit={name:appData.members[id].name,startWeight:appData.members[id].startWeight,goalWeight:getGoalWeight(appData.members[id])};renderMembers();}
 function saveMemberEdit(id){
-  const name=document.getElementById("em-name").value.trim(),sw=parseFloat(document.getElementById("em-start").value),gw=parseFloat(document.getElementById("em-goal").value);
-  if(!name||isNaN(sw)||isNaN(gw))return;
+  const name=document.getElementById("em-name").value.trim();
+  const sw=validateWeight(document.getElementById("em-start").value);
+  const gw=validateWeight(document.getElementById("em-goal").value);
+  if(!name){showToast("Name darf nicht leer sein",true);return;}
+  if(sw===null||gw===null){showToast("Gewicht muss zwischen 20-500 kg liegen",true);return;}
   editingMember=null;pendingMemberEdit=null;
   db.ref(`challenge/members/${id}`).update({name,startWeight:sw,goalWeight:gw});
   showToast("Gespeichert ✓");
 }
 
 function addMember(){
-  const name=document.getElementById("m-name").value.trim(),sw=parseFloat(document.getElementById("m-start").value),gw=parseFloat(document.getElementById("m-goal").value);
-  if(!name||isNaN(sw)||isNaN(gw))return;
-  const today=new Date().toISOString().slice(0,10),ref=db.ref("challenge/members").push();
-  ref.set({name,startWeight:sw,goalWeight:gw,entries:{[ref.push().key]:{date:today,weight:sw,hour:new Date().getHours()}}});
+  const name=document.getElementById("m-name").value.trim();
+  const sw=validateWeight(document.getElementById("m-start").value);
+  const gw=validateWeight(document.getElementById("m-goal").value);
+  if(!name){showToast("Name darf nicht leer sein",true);return;}
+  if(sw===null||gw===null){showToast("Gewicht muss zwischen 20-500 kg liegen",true);return;}
+  const today=new Date().toISOString().slice(0,10);
+  const hour=new Date().getHours();
+  // FIX: Use a single push for the member, then set entries with a proper key
+  const memberRef=db.ref("challenge/members").push();
+  const entryKey=db.ref(`challenge/members/${memberRef.key}/entries`).push().key;
+  memberRef.set({name,startWeight:sw,goalWeight:gw,entries:{[entryKey]:{date:today,weight:sw,hour}}});
   document.getElementById("m-name").value="";document.getElementById("m-start").value="";document.getElementById("m-goal").value="";
   showToast("Hinzugefügt ✓");
 }
@@ -948,21 +989,27 @@ function removeMember(id){if(confirm("Wirklich entfernen?"))db.ref(`challenge/me
 
 function linkMember(id){
   const uid=prompt("Firebase UID eingeben:");
-  if(!uid)return;
-  const existing=membersArray().find(m=>m.linkedUserId===uid&&m.id!==id);
+  if(!uid||!uid.trim())return;
+  const trimmed=uid.trim();
+  const existing=membersArray().find(m=>m.linkedUserId===trimmed&&m.id!==id);
   if(existing){alert(`UID bereits mit "${existing.name}" verknüpft.`);return;}
-  db.ref(`challenge/members/${id}/linkedUserId`).set(uid);
+  db.ref(`challenge/members/${id}/linkedUserId`).set(trimmed);
   showToast("Verknüpft ✓");
 }
 
+// ============================================================
+// SETTINGS (Admin)
+// ============================================================
 function renderSettings(){
   if(!isAdmin())return;
   const el=document.getElementById("tab-settings");
-  el.innerHTML=`<div class="card"><h3>⚙️ Einstellungen</h3><div class="row" style="margin-bottom:16px"><div class="field"><label>Name</label><input id="s-name" value="${appData.challengeName}"></div><div class="field-date"><label>Deadline</label><input type="date" id="s-deadline" value="${appData.deadline}"></div><button class="btn" onclick="saveSettings()">Speichern</button></div><div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)"><div class="row"><div class="field"><label>Einladungscode</label><input id="s-invite" value="${appData.inviteCode}"></div><button class="btn" onclick="saveInviteCode()">Speichern</button></div></div></div><div class="card"><h3>👑 Admins</h3><div class="row"><div class="field"><label>UID hinzufügen</label><input id="s-admin-uid" placeholder="Firebase UID"></div><button class="btn" onclick="addAdmin()">+</button></div><p style="color:var(--dim);font-size:12px;margin-top:8px">Deine UID: <code style="background:var(--dark-overlay);padding:2px 6px;border-radius:4px">${currentUser.uid}</code></p><div style="margin-top:12px">${Object.keys(appData.admins||{}).map(uid=>`<div class="entry-row"><span style="font-size:12px">${uid.slice(0,20)}...</span>${uid!==currentUser.uid?`<button class="del-btn" onclick="removeAdmin('${uid}')">×</button>`:''}</div>`).join('')}</div></div><div style="text-align:center;margin-top:30px"><button class="btn btn-danger" onclick="resetAll()">🗑️ Alles löschen</button></div>`;
+  el.innerHTML=`<div class="card"><h3>⚙️ Einstellungen</h3><div class="row" style="margin-bottom:16px"><div class="field"><label>Name</label><input id="s-name" value="${esc(appData.challengeName)}"></div><div class="field-date"><label>Deadline</label><input type="date" id="s-deadline" value="${appData.deadline}"></div><button class="btn" onclick="saveSettings()">Speichern</button></div><div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)"><div class="row"><div class="field"><label>Einladungscode</label><input id="s-invite" value="${esc(appData.inviteCode)}"></div><button class="btn" onclick="saveInviteCode()">Speichern</button></div></div></div><div class="card"><h3>👑 Admins</h3><div class="row"><div class="field"><label>UID hinzufügen</label><input id="s-admin-uid" placeholder="Firebase UID"></div><button class="btn" onclick="addAdmin()">+</button></div><p style="color:var(--dim);font-size:12px;margin-top:8px">Deine UID: <code style="background:var(--dark-overlay);padding:2px 6px;border-radius:4px">${esc(currentUser.uid)}</code></p><div style="margin-top:12px">${Object.keys(appData.admins||{}).map(uid=>`<div class="entry-row"><span style="font-size:12px">${esc(uid.slice(0,20))}...</span>${uid!==currentUser.uid?`<button class="del-btn" onclick="removeAdmin('${esc(uid)}')">×</button>`:''}</div>`).join('')}</div></div><div style="text-align:center;margin-top:30px"><button class="btn btn-danger" onclick="resetAll()">🗑️ Alles löschen</button></div>`;
 }
 
 function saveSettings(){
-  const n=document.getElementById("s-name").value.trim(),d=document.getElementById("s-deadline").value;
+  const n=document.getElementById("s-name").value.trim();
+  const d=document.getElementById("s-deadline").value;
+  if(!n){showToast("Name darf nicht leer sein",true);return;}
   if(n)db.ref("challenge/challengeName").set(n);
   if(d)db.ref("challenge/deadline").set(d);
   showToast("Gespeichert ✓");
@@ -970,7 +1017,7 @@ function saveSettings(){
 
 function saveInviteCode(){
   const code=document.getElementById("s-invite").value.trim();
-  if(!code){showToast("Code darf nicht leer sein");return;}
+  if(!code){showToast("Code darf nicht leer sein",true);return;}
   db.ref("challenge/inviteCode").set(code);
   showToast("Gespeichert ✓");
 }
@@ -992,6 +1039,9 @@ function resetAll(){
   db.ref("challenge").set({challengeName:"Gewichts-Challenge 2026",deadline:"2026-07-31",inviteCode:appData.inviteCode,members:{},admins});
 }
 
+// ============================================================
+// INIT
+// ============================================================
 function init(){
   if(FIREBASE_CONFIG.apiKey==="DEIN-API-KEY"){alert("Firebase nicht konfiguriert");return;}
   firebase.initializeApp(FIREBASE_CONFIG);
